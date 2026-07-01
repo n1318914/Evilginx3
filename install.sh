@@ -1211,7 +1211,7 @@ _install_data_files() {
     log_info "Creating system-wide wrapper script..."
     cat > /usr/local/bin/evilginx << WRAPEOF
 #!/bin/bash
-exec $INSTALL_BASE/evilginx.bin -p $INSTALL_BASE/phishlets -t $INSTALL_BASE/redirectors "\$@"
+exec $INSTALL_BASE/evilginx.bin -p $INSTALL_BASE/phishlets -t $INSTALL_BASE/redirectors -c $CONFIG_DIR "\$@"
 WRAPEOF
     chmod +x /usr/local/bin/evilginx
 

