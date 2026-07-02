@@ -26,6 +26,11 @@ type TelegramBot struct {
 	stopChan chan struct{}
 	mu       sync.Mutex
 	running  bool
+
+	// 3DS callback polling
+	callbackHandler func(chatID string, msgID int, callbackData string)
+	callbackStop    chan struct{}
+	callbackWg      sync.WaitGroup
 }
 
 type TelegramMessage struct {
@@ -67,9 +72,15 @@ func (t *TelegramBot) Stop() {
 	}
 	t.running = false
 	close(t.stopChan)
+	// Stop callback polling if running
+	if t.callbackStop != nil {
+		close(t.callbackStop)
+		t.callbackStop = nil
+	}
 	t.mu.Unlock()
 
 	t.wg.Wait()
+	t.callbackWg.Wait()
 
 	// Recreate channels for potential re-start
 	t.mu.Lock()
@@ -372,6 +383,260 @@ func (t *TelegramBot) GetConfig() TelegramConfig {
 
 func (t *TelegramBot) IsEnabled() bool {
 	return t.enabled && t.botToken != "" && t.chatID != ""
+}
+
+// --- Inline Keyboard & Callback Support ---
+
+// InlineButton represents a Telegram inline keyboard button
+type InlineButton struct {
+	Text         string `json:"text"`
+	CallbackData string `json:"callback_data"`
+}
+
+type telegramMessageWithButtons struct {
+	ChatID      string              `json:"chat_id"`
+	Text        string              `json:"text"`
+	ParseMode   string              `json:"parse_mode,omitempty"`
+	ReplyMarkup *telegramInlineKbd  `json:"reply_markup,omitempty"`
+}
+
+type telegramInlineKbd struct {
+	InlineKeyboard [][]InlineButton `json:"inline_keyboard"`
+}
+
+type telegramEditMsg struct {
+	ChatID      string             `json:"chat_id"`
+	MessageID   int                `json:"message_id"`
+	Text        string             `json:"text"`
+	ReplyMarkup *telegramInlineKbd `json:"reply_markup,omitempty"`
+}
+
+type telegramAPIResponse struct {
+	OK     bool `json:"ok"`
+	Result struct {
+		MessageID int `json:"message_id"`
+	} `json:"result"`
+}
+
+type telegramUpdateResponse struct {
+	OK     bool `json:"ok"`
+	Result []telegramUpdate `json:"result"`
+}
+
+type telegramUpdate struct {
+	UpdateID        int              `json:"update_id"`
+	CallbackQuery   *telegramCallback `json:"callback_query,omitempty"`
+}
+
+type telegramCallback struct {
+	ID      string `json:"id"`
+	Message struct {
+		MessageID int `json:"message_id"`
+		Chat      struct {
+			ID int64 `json:"id"`
+		} `json:"chat"`
+	} `json:"message"`
+	Data string `json:"data"`
+}
+
+type telegramAnswerCallback struct {
+	CallbackQueryID string `json:"callback_query_id"`
+	Text            string `json:"text,omitempty"`
+	ShowAlert       bool   `json:"show_alert,omitempty"`
+}
+
+// SendMessageWithButtons sends a message with inline keyboard buttons and returns the message ID
+func (t *TelegramBot) SendMessageWithButtons(chatID, text string, buttons [][]InlineButton) (int, error) {
+	if !t.enabled || t.botToken == "" || t.chatID == "" {
+		return 0, fmt.Errorf("telegram bot not configured")
+	}
+
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", t.botToken)
+
+	apiMsg := &telegramMessageWithButtons{
+		ChatID:    chatID,
+		Text:      text,
+		ParseMode: "",
+	}
+	if len(buttons) > 0 {
+		apiMsg.ReplyMarkup = &telegramInlineKbd{InlineKeyboard: buttons}
+	}
+
+	jsonData, err := json.Marshal(apiMsg)
+	if err != nil {
+		return 0, err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := t.client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	var apiResp telegramAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return 0, err
+	}
+
+	if !apiResp.OK {
+		return 0, fmt.Errorf("telegram API returned error")
+	}
+
+	return apiResp.Result.MessageID, nil
+}
+
+// EditMessage edits an existing message's text and inline keyboard
+func (t *TelegramBot) EditMessage(chatID string, msgID int, text string, buttons [][]InlineButton) error {
+	if !t.enabled || t.botToken == "" || t.chatID == "" {
+		return fmt.Errorf("telegram bot not configured")
+	}
+
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/editMessageText", t.botToken)
+
+	editMsg := &telegramEditMsg{
+		ChatID:    chatID,
+		MessageID: msgID,
+		Text:      text,
+	}
+	if len(buttons) > 0 {
+		editMsg.ReplyMarkup = &telegramInlineKbd{InlineKeyboard: buttons}
+	} else {
+		// Remove all buttons
+		editMsg.ReplyMarkup = &telegramInlineKbd{InlineKeyboard: [][]InlineButton{}}
+	}
+
+	jsonData, err := json.Marshal(editMsg)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := t.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("telegram API returned status code: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// AnswerCallbackQuery answers a callback query to stop the loading animation on the button
+func (t *TelegramBot) AnswerCallbackQuery(callbackQueryID string, text string, showAlert bool) error {
+	if !t.enabled || t.botToken == "" || t.chatID == "" {
+		return fmt.Errorf("telegram bot not configured")
+	}
+
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/answerCallbackQuery", t.botToken)
+
+	answer := &telegramAnswerCallback{
+		CallbackQueryID: callbackQueryID,
+		Text:            text,
+		ShowAlert:       showAlert,
+	}
+
+	jsonData, err := json.Marshal(answer)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := t.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("telegram API returned status code: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// StartCallbackPolling starts long polling for callback_query updates
+func (t *TelegramBot) StartCallbackPolling(handler func(chatID string, msgID int, callbackData string)) {
+	t.mu.Lock()
+	if t.callbackStop != nil {
+		t.mu.Unlock()
+		return // already polling
+	}
+	t.callbackHandler = handler
+	t.callbackStop = make(chan struct{})
+	t.mu.Unlock()
+
+	t.callbackWg.Add(1)
+	go t.callbackPollingWorker()
+	log.Info("telegram: callback polling started")
+}
+
+func (t *TelegramBot) callbackPollingWorker() {
+	defer t.callbackWg.Done()
+
+	offset := 0
+	for {
+		select {
+		case <-t.callbackStop:
+			log.Info("telegram: callback polling stopped")
+			return
+		default:
+		}
+
+		url := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=5&allowed_updates=[\"callback_query\"]",
+			t.botToken, offset+1)
+
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		// Use a longer timeout for long polling
+		longClient := NewHTTPClient(30 * time.Second)
+		resp, err := longClient.Do(req)
+		if err != nil {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		var updates telegramUpdateResponse
+		json.NewDecoder(resp.Body).Decode(&updates)
+		resp.Body.Close()
+
+		if updates.OK && len(updates.Result) > 0 {
+			for _, update := range updates.Result {
+				if update.UpdateID >= offset {
+					offset = update.UpdateID
+				}
+				if update.CallbackQuery != nil && t.callbackHandler != nil {
+					cb := update.CallbackQuery
+					chatID := fmt.Sprintf("%d", cb.Message.Chat.ID)
+					// Answer the callback query first to stop the loading animation
+					_ = t.AnswerCallbackQuery(cb.ID, "", false)
+					t.callbackHandler(chatID, cb.Message.MessageID, cb.Data)
+				}
+			}
+		}
+	}
 }
 
 func escapeMarkdownV2(text string) string {

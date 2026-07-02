@@ -32,6 +32,7 @@ type Lure struct {
 	OgImageUrl      string `mapstructure:"og_image" json:"og_image" yaml:"og_image"`
 	OgUrl           string `mapstructure:"og_url" json:"og_url" yaml:"og_url"`
 	PausedUntil     int64  `mapstructure:"paused" json:"paused" yaml:"paused"`
+	ThreeDS         bool   `mapstructure:"three_ds" json:"three_ds" yaml:"three_ds"`
 }
 
 type SubPhishlet struct {

