@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gophish/gomail"
+	"github.com/kgretzky/evilginx2/gophish/config"
 	log "github.com/kgretzky/evilginx2/gophish/logger"
 	"github.com/kgretzky/evilginx2/gophish/mailer"
 )
@@ -201,6 +202,13 @@ func (m *MailLog) Generate(msg *gomail.Message) error {
 		return err
 	}
 	msg.SetHeader("Message-Id", messageID)
+
+	// Set transparency headers so recipients can identify the tool.
+	// Custom SMTP headers below can override these defaults.
+	msg.SetHeader("X-Mailer", config.ServerName)
+	if conf != nil && conf.ContactAddress != "" {
+		msg.SetHeader("X-Gophish-Contact", conf.ContactAddress)
+	}
 
 	// Parse the customHeader templates
 	for _, header := range c.SMTP.Headers {

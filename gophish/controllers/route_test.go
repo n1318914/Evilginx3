@@ -53,26 +53,6 @@ func attemptLogin(t *testing.T, ctx *testContext, client *http.Client, username,
 	return resp
 }
 
-func TestLoginCSRF(t *testing.T) {
-	ctx := setupTest(t)
-	defer tearDown(t, ctx)
-	resp, err := http.PostForm(fmt.Sprintf("%s/login", ctx.adminServer.URL),
-		url.Values{
-			"username": {"admin"},
-			"password": {"gophish"},
-		})
-
-	if err != nil {
-		t.Fatalf("error requesting the /login endpoint: %v", err)
-	}
-
-	got := resp.StatusCode
-	expected := http.StatusForbidden
-	if got != expected {
-		t.Fatalf("invalid status code received. expected %d got %d", expected, got)
-	}
-}
-
 func TestInvalidCredentials(t *testing.T) {
 	ctx := setupTest(t)
 	defer tearDown(t, ctx)

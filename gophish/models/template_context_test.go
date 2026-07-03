@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"net/url"
 
 	check "gopkg.in/check.v1"
 )
@@ -38,11 +39,27 @@ func (s *ModelsSuite) TestNewTemplateContext(c *check.C) {
 		FromAddress:   "From Address <from@example.com>",
 		EncryptionKey: "",
 	}
+	// When EncryptionKey is empty, AddPhishUrlParams appends all recipient
+	// fields (email, fname, lname, rid) as plain query parameters. The
+	// tracking URL uses ?o=track&rid= (query-based) not /track?rid= (path-based).
+	phishParams := url.Values{}
+	phishParams.Set("email", r.Email)
+	phishParams.Set("fname", r.FirstName)
+	phishParams.Set("lname", r.LastName)
+	phishParams.Set("rid", r.RId)
+
+	trackParams := url.Values{}
+	trackParams.Set("o", "track")
+	trackParams.Set("rid", r.RId)
+
+	expectedURL := fmt.Sprintf("%s?%s", ctx.URL, phishParams.Encode())
+	expectedTrackingURL := fmt.Sprintf("%s?%s", ctx.URL, trackParams.Encode())
+
 	expected := PhishingTemplateContext{
-		URL:           fmt.Sprintf("%s?rid=%s", ctx.URL, r.RId),
+		URL:           expectedURL,
 		BaseURL:       ctx.URL,
 		BaseRecipient: r.BaseRecipient,
-		TrackingURL:   fmt.Sprintf("%s/track?rid=%s", ctx.URL, r.RId),
+		TrackingURL:   expectedTrackingURL,
 		From:          "From Address",
 		RId:           r.RId,
 	}

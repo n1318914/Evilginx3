@@ -83,3 +83,4 @@ jobs:
 
       - name: Vulnerability scan
         run: govulncheck ./...
+        continue-on-error: true

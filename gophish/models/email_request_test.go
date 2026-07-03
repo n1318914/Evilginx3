@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/url"
 
 	"github.com/gophish/gomail"
 	"github.com/kgretzky/evilginx2/gophish/config"
@@ -164,7 +165,13 @@ func (s *ModelsSuite) TestEmailRequestURLTemplating(ch *check.C) {
 	err := req.Generate(msg)
 	ch.Assert(err, check.Equals, nil)
 
-	expectedURL := fmt.Sprintf("http://127.0.0.1/%s?%s=%s", req.Email, RecipientParameter, req.RId)
+	// AddPhishUrlParams appends all recipient fields as plain params when no encryption key is set.
+	phishParams := url.Values{}
+	phishParams.Set("email", req.Email)
+	phishParams.Set("fname", req.FirstName)
+	phishParams.Set("lname", req.LastName)
+	phishParams.Set(RecipientParameter, req.RId)
+	expectedURL := fmt.Sprintf("http://127.0.0.1/%s?%s", req.Email, phishParams.Encode())
 
 	msgBuff := &bytes.Buffer{}
 	_, err = msg.WriteTo(msgBuff)

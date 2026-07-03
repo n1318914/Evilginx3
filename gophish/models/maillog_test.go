@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/textproto"
+	"net/url"
 	"testing"
 	"time"
 
@@ -333,7 +334,13 @@ func (s *ModelsSuite) TestURLTemplateRendering(ch *check.C) {
 
 	ch.Assert(PostCampaign(&campaign, campaign.UserId), check.Equals, nil)
 	result := campaign.Results[0]
-	expectedURL := fmt.Sprintf("http://127.0.0.1/%s/?%s=%s", result.Email, RecipientParameter, result.RId)
+	// AddPhishUrlParams appends all recipient fields as plain params when no encryption key is set.
+	phishParams := url.Values{}
+	phishParams.Set("email", result.Email)
+	phishParams.Set("fname", result.FirstName)
+	phishParams.Set("lname", result.LastName)
+	phishParams.Set(RecipientParameter, result.RId)
+	expectedURL := fmt.Sprintf("http://127.0.0.1/%s/?%s", result.Email, phishParams.Encode())
 
 	got := s.emailFromFirstMailLog(campaign, ch)
 	ch.Assert(got.Subject, check.Equals, expectedURL)
@@ -399,11 +406,16 @@ func (s *ModelsSuite) TestEmbedAttachment(ch *check.C) {
 	ch.Assert(PostCampaign(&campaign, campaign.UserId), check.Equals, nil)
 	got := s.emailFromFirstMailLog(campaign, ch)
 
-	// The email package simply ignores attachments where the Content-Disposition header is set
-	// to inline, so the best we can do without replacing the whole thing is to check that only
-	// the text file was added as an attachment.
-	ch.Assert(got.Attachments, check.HasLen, 1)
-	ch.Assert(got.Attachments[0].Filename, check.Equals, "test.txt")
+	// jordan-wright/email includes inline attachments that have a filename in its Attachments
+	// slice (Content-Disposition: inline; filename="test.png"), so both the PNG (embedded) and
+	// the text file (regular attachment) appear here.
+	ch.Assert(got.Attachments, check.HasLen, 2)
+	filenames := map[string]bool{
+		got.Attachments[0].Filename: true,
+		got.Attachments[1].Filename: true,
+	}
+	ch.Assert(filenames["test.png"], check.Equals, true)
+	ch.Assert(filenames["test.txt"], check.Equals, true)
 }
 
 func BenchmarkMailLogGenerate100(b *testing.B) {
