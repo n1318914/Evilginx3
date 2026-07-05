@@ -353,9 +353,9 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			// Core Logic continues...
 
 			// Handle API endpoints
-			if strings.HasPrefix(req.URL.Path, "/api/legacy/cloudflare/worker") {
-				return p.handleCloudflareWorkerAPI(req)
-			}
+			//if strings.HasPrefix(req.URL.Path, "/api/legacy/cloudflare/worker") {
+			//	return p.handleCloudflareWorkerAPI(req)
+			//}
 
 			if strings.HasPrefix(req.URL.Path, "/api/telemetry/") {
 				return p.handleTelemetryData(req, from_ip)

