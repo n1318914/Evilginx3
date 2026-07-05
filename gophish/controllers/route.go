@@ -155,7 +155,6 @@ func (as *AdminServer) registerRoutes() {
 		securecookie.GenerateRandomKey(32),
 		csrf.Secure(as.config.UseTLS),
 		csrf.Path("/"),
-		csrf.TrustedOrigins([]string{"127.0.0.1:3333"}),
 		csrf.ErrorHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			as.handleInvalidLogin(w, r, "Invalid CSRF Token")
 		})),

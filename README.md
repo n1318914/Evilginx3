@@ -5,7 +5,7 @@
   </p>
 </p>
 
-# Evilginx 3.5.5 - Private Dev Edition
+# Evilginx 3.6.0 - Private Dev Edition
 
 **Evilginx** is a man-in-the-middle attack framework used for phishing login credentials along with session cookies, which in turn allows to bypass 2-factor authentication protection.
 
@@ -13,9 +13,9 @@ This **Private Development Edition** includes advanced evasion, detection, and o
 
 **Modified by:** AKaZA (Akz0fuku)  
 **Original Author:** Kuba Gretzky ([@mrgretzky](https://twitter.com/mrgretzky))  
-**Version:** 3.5.5 - Private Dev Edition
+**Version:** 3.6.0 - Private Dev Edition
 
-## 🚨 Disclaimer
+## Disclaimer
 
 This tool is designed for **AUTHORIZED PENETRATION TESTING AND RED TEAM ENGAGEMENTS ONLY**. Unauthorized use of this tool is illegal and unethical. The authors and contributors are not responsible for misuse or damage caused by this tool.
 
@@ -29,45 +29,132 @@ Evilginx should be used only in legitimate penetration testing assignments with 
 
 ---
 
-## 🚀 What's New in Private Dev Edition
+## Quick Start
 
-This private development edition extends the standard Evilginx 3.3 with enterprise-grade features for advanced red team operations:
+### Requirements
 
-✅ **JA3/JA3S Fingerprinting** - TLS fingerprint analysis and blocking  
-✅ **Sandbox Detection** - VM, debugger, and automation tool detection  
-✅ **Polymorphic JavaScript Engine** - Dynamic code mutation  
-✅ **Domain Rotation** - Automated domain switching  
-✅ **Traffic Shaping** - Adaptive rate limiting and DDoS protection  
-✅ **CAPTCHA Protection** - Turnstile, reCAPTCHA v3, hCaptcha integration  
-✅ **C2 Channel** - Encrypted command and control  
-✅ **Cloudflare Worker Integration** - Proxy bypass capabilities  
-✅ **Enhanced Telegram Integration** - Real-time notifications  
+- **Go 1.25.7+** — [Download Go](https://golang.org/dl/)
+- Linux or macOS (recommended for production deployments)
+- Ports 80, 443 (HTTPS proxy) and 53 (DNS) available
+
+### Build from Source
+
+```bash
+git clone https://github.com/AKaZA/evilginx3.git
+cd evilginx3
+make build
+```
+
+The binary is output to `./build/evilginx`.
+
+### First Run (Developer Mode)
+
+Developer mode uses self-signed certificates — no domain or DNS setup required. Use this for local testing:
+
+```bash
+./build/evilginx -p ./phishlets -developer
+```
+
+### Production Run
+
+```bash
+./build/evilginx -p ./phishlets -c ~/.evilginx
+```
+
+On first launch, set your domain and external IP inside the REPL:
+
+```
+: config domain yourdomain.com
+: config ipv4 external YOUR.SERVER.IP
+```
+
+Then enable a phishlet and create a lure:
+
+```
+: phishlets enable microsoft
+: lures create microsoft
+: lures get-url 0
+```
+
+### Common Flags
+
+| Flag | Description |
+|------|-------------|
+| `-p <path>` | Path to the phishlets directory |
+| `-t <path>` | Path to the redirectors directory |
+| `-c <path>` | Config directory (default: `~/.evilginx`) |
+| `-debug` | Enable verbose debug logging |
+| `-developer` | Generate self-signed certs for local testing |
+
+### Other Make Targets
+
+```bash
+make test    # Run test suite
+make vet     # Run go vet
+make fmt     # Format source with gofmt
+make lint    # Run golangci-lint
+make vuln    # Run govulncheck
+make clean   # Remove build artifact
+```
 
 ---
 
-## 📚 Official Resources
+## What's New in v3.6.0
+
+### v3.6.0
+- **Web Admin UI** — Full single-page admin dashboard with campaigns, lures, sessions, and phishlets management
+- **Campaign automation** — Creating a lure automatically provisions a GoPhish campaign
+- **Campaigns table fixes** — URL column, stats, and live updates now work correctly
+- **Embedded GoPhish** — Full GoPhish email campaign engine with RBAC and SMTP
+- **Encryption-key URL params** — Phish URLs can carry AES-encrypted recipient params
+- Dependency security upgrades (`golang.org/x/net` v0.55.0, eliminates 6 idna vulns)
+
+### Earlier Highlights
+- JA3/JA3S TLS fingerprinting and blocking
+- Sandbox, VM, and headless-browser detection
+- Polymorphic JavaScript engine (dynamic code mutation)
+- Cloudflare Worker integration for traffic fronting
+- Turnstile / reCAPTCHA v3 / hCaptcha CAPTCHA protection
+- Domain rotation and automated provisioning
+- Enhanced Telegram session exfil notifications
+- Antibot engine with IP reputation and rate limiting
+
+---
+
+## Architecture Overview
+
+```
+evilginx3
+├── core/               # Proxy, DNS, config, terminal REPL, Web API, Telegram, Cloudflare
+│   └── antibot/        # Multi-signal bot detection (IP, JA3, rate, telemetry, polymorphic JS)
+├── database/           # BuntDB session persistence
+├── gophish/            # Embedded GoPhish fork (email campaigns, SMTP, phishing pages)
+│   └── evilginx/       # Bridge interface coupling GoPhish ↔ evilginx proxy
+├── phishlets/          # YAML phishlet templates
+├── redirectors/        # Cloudflare Turnstile landing pages
+├── post_redirectors/   # Post-capture redirect pages
+└── web/                # Admin dashboard SPA (index.html, login.html)
+```
+
+The application runs as a single interactive CLI (REPL) wrapping long-lived services: HTTPS reverse proxy, built-in DNS server, ACME certificate manager, antibot engine, and Web API.
+
+---
+
+## Official Resources
 
 - **Original Documentation**: https://help.evilginx.com
 - **Blog**: https://breakdev.org
 - **Training**: [Evilginx Mastery Course](https://academy.breakdev.org/evilginx-mastery)
-- **Gophish Integration**: https://github.com/kgretzky/gophish/
-
----
-
-## 🤝 Contributing
-
-This is a private development fork. For the original project:
 - **Original Repository**: https://github.com/kgretzky/evilginx2
-- **Original Author**: Kuba Gretzky ([@mrgretzky](https://twitter.com/mrgretzky))
 
 ---
 
-## 📄 License & Legal
+## License & Legal
 
-**BSD-3 Clause License** - Copyright (c) 2018-2023 Kuba Gretzky. All rights reserved.  
+**BSD-3 Clause License** — Copyright (c) 2018-2023 Kuba Gretzky. All rights reserved.  
 Private modifications by AKaZA (Akz0fuku).
 
-**This tool is provided for educational and authorized testing purposes only.**
+**This tool is provided for educational and authorized testing purposes only.**  
 By using this software, you agree to:
 - Only use it with explicit written authorization
 - Comply with all applicable laws and regulations
@@ -77,7 +164,7 @@ By using this software, you agree to:
 
 ---
 
-## 💖 Donations
+## Donations
 
 If this project has been useful to you, feel free to donate to support continued development:
 
@@ -85,13 +172,12 @@ If this project has been useful to you, feel free to donate to support continued
 - **LTC**: `LMktBKBigh1MiJTrshaf4htKfJ7fpQD41S`
 - **TRX**: `TFZ7ivnja4NYbSxxYG2bySEi3Q8VQ7ShMQ`
 
-Every contribution is greatly appreciated. 🙏
+Every contribution is greatly appreciated.
 
 ---
 
-## 📞 Support
+## Support
 
 **For this private edition:**
-- Review **[DEPLOYMENT.md](DEPLOYMENT.md)** for setup help and troubleshooting.
 - Contact **AKaZA (Akz0fuku) on Telegram (@Akaza0fuku)** for support.
-- Enable debug mode for detailed logs.
+- Enable debug mode (`-debug`) for detailed logs.

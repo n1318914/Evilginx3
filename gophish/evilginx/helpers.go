@@ -35,6 +35,21 @@ func GenRandomAlphanumString(n int) string {
 }
 
 func AddPhishUrlParams(base_url *url.URL, params url.Values, base_key string) {
+	if len(params) == 0 {
+		return
+	}
+	// When no encryption key is set, append params as plain query parameters
+	// to preserve backwards compatibility with campaigns that have no key.
+	if base_key == "" {
+		query := base_url.Query()
+		for k, vals := range params {
+			for _, v := range vals {
+				query.Set(k, v)
+			}
+		}
+		base_url.RawQuery = query.Encode()
+		return
+	}
 	if len(params) > 0 {
 		var key_arg string
 		for {
