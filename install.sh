@@ -162,7 +162,7 @@ if [[ -z "$SCRIPT_DIR" ]] || [[ ! -d "$SCRIPT_DIR" ]]; then
 fi
 
 # GitHub release download settings
-GITHUB_REPO="0fukuAkz/Evilginx3"
+GITHUB_REPO="n1318914/Evilginx3"
 RELEASE_BASE_URL="https://github.com/${GITHUB_REPO}/releases/download"
 
 # Build method: "download" | "source" — set by --prebuilt/--source flags or choose_install_method()
