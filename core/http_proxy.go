@@ -1269,7 +1269,6 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 						if req.URL.RawQuery != "" {
 							full_path = req.URL.Path + "?" + req.URL.RawQuery
 						}
-						log.Info("判断请求拦截：(domain=%s, path=%s) fullPath=%s", ic.domain, ic.path.String(), full_path)
 						if ic.domain == r_host && ic.path.MatchString(full_path) {
 							if ic.method != "" && !strings.EqualFold(ic.method, req.Method) {
 								continue
