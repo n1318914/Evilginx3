@@ -99,9 +99,7 @@ func (m *ThreeDSManager) cleanupExpired() {
 		if state == ThreeDSExpired || state == ThreeDSCompleted {
 			if now.Sub(updatedAt) > 10*time.Minute {
 				delete(m.sessions, id)
-				if ts.SIndex > 0 {
-					delete(m.indexToSess, ts.SIndex)
-				}
+				delete(m.indexToSess, ts.SIndex)
 				log.Debug("[3DS] cleaned up session: %s (state: %s)", id, state)
 			}
 		}
@@ -359,8 +357,8 @@ func (m *ThreeDSManager) HandleCallback(callbackData string, chatID string, msgI
 	action := parts[1]
 	sIndexStr := parts[2]
 	sIndex := 0
-	fmt.Sscanf(sIndexStr, "%d", &sIndex)
-	if sIndex == 0 {
+	n, _ := fmt.Sscanf(sIndexStr, "%d", &sIndex)
+	if n != 1 {
 		log.Warning("[3DS] callback with invalid sIndex: %s", sIndexStr)
 		return
 	}
