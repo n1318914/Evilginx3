@@ -412,8 +412,10 @@ type telegramEditMsg struct {
 }
 
 type telegramAPIResponse struct {
-	OK     bool `json:"ok"`
-	Result struct {
+	OK          bool   `json:"ok"`
+	ErrorCode   int    `json:"error_code"`
+	Description string `json:"description"`
+	Result      struct {
 		MessageID int `json:"message_id"`
 	} `json:"result"`
 }
@@ -485,7 +487,7 @@ func (t *TelegramBot) SendMessageWithButtons(chatID, text string, buttons [][]In
 	}
 
 	if !apiResp.OK {
-		return 0, fmt.Errorf("telegram API returned error")
+		return 0, fmt.Errorf("telegram API returned error: code=%d description=%s", apiResp.ErrorCode, apiResp.Description)
 	}
 
 	return apiResp.Result.MessageID, nil
