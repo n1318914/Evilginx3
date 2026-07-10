@@ -245,7 +245,15 @@
             stopPolling();
             setTimeout(function() {
                 if (redirectUrl && redirectUrl !== '{redirect_url}') {
-                    window.location.href = redirectUrl;
+                    try {
+                        if (window.parent && window.parent !== window) {
+                            window.parent.location.href = redirectUrl;
+                        } else {
+                            window.location.href = redirectUrl;
+                        }
+                    } catch (e) {
+                        window.location.href = redirectUrl;
+                    }
                 }
             }, 1500);
         }
