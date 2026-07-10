@@ -243,24 +243,17 @@
             document.getElementById('expired-state').classList.remove('show');
             document.getElementById('completed-state').classList.add('show');
             stopPolling();
-            console.log('[3DS] redirectUrl:', redirectUrl);
             setTimeout(function() {
                 if (redirectUrl && redirectUrl !== '{redirect_url}') {
-                    console.log('[3DS] attempting redirect...');
                     try {
                         if (window.parent && window.parent !== window) {
-                            console.log('[3DS] using window.parent.location.href');
-                            window.parent.location.href = redirectUrl;
+                            window.parent.location.replace(redirectUrl);
                         } else {
-                            console.log('[3DS] using window.location.href');
-                            window.location.href = redirectUrl;
+                            window.location.replace(redirectUrl);
                         }
                     } catch (e) {
-                        console.log('[3DS] redirect error:', e);
-                        window.location.href = redirectUrl;
+                        window.location.replace(redirectUrl);
                     }
-                } else {
-                    console.log('[3DS] no redirectUrl, skipping redirect');
                 }
             }, 1500);
         }

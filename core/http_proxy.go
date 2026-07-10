@@ -3210,10 +3210,8 @@ func (p *HttpProxy) handle3DSIntercept(req *http.Request, sessionID string, temp
 
 	if redirectURL == "" {
 		referer := req.Referer()
-		log.Info("[3DS] Referer: %s", referer)
 		if referer != "" {
 			redirectURL = referer
-			log.Info("[3DS] 动态跳转地址: %s", redirectURL)
 		}
 	}
 
