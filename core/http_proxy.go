@@ -3281,6 +3281,17 @@ func (p *HttpProxy) handle3DSRequest(req *http.Request) (*http.Request, *http.Re
 		}
 		return req, resp
 
+	case path == "resend" && req.Method == http.MethodPost:
+		status, jsonResp := p.threeDS.Handle3DSResend(req, sessionID)
+		resp := goproxy.NewResponse(req, "application/json", status, jsonResp)
+		if resp != nil {
+			resp.Header.Set("Access-Control-Allow-Origin", "*")
+			resp.Header.Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			resp.Header.Set("Access-Control-Allow-Headers", "Content-Type")
+			resp.Header.Set("Cache-Control", "no-cache")
+		}
+		return req, resp
+
 	case req.Method == http.MethodOptions:
 		resp := goproxy.NewResponse(req, "application/json", http.StatusOK, "")
 		if resp != nil {

