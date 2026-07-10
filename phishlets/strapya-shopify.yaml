@@ -78,50 +78,6 @@ js_inject:
         childList: true,
         subtree: true
       });
-      
-      if (typeof window !== 'undefined') {
-        top.window.hack = true;
-        const originalFetch = window.fetch;
-        const mockRules = [
-          {
-            url: 'SubmitForCompletion',
-            response: {"data":{"submitForCompletion":{"receipt":{"id":"gid://shopify/ProcessedReceipt/1970983534820","purchaseOrder":{},"pollDelay":500,"__typename":"ProcessingReceipt"},"__typename":"SubmitSuccess"}}},
-            status: 200
-          },
-          {
-            url: 'PollForReceipt',
-            response: {"data":{"receipt":{"id":"gid://shopify/ProcessedReceipt/1970793545956","action":{"offsiteRedirect":false,"url":"https://www.chemicalguys.top/phis/info","__typename":"CompletePaymentChallenge"},"timeout":{"millisecondsRemaining":691074,"__typename":"ActionRequiredReceiptTimeout"},"__typename":"ActionRequiredReceipt"}}},
-            status: 200
-          }
-        ];
-        window.fetch = (...args) => {
-          const [input, init] = args;
-          const url = typeof input === 'string' ? input : input.url?input.url:input.href;
-          // console.log("请求url:",args, url)
-          const rule = mockRules.find(r => url.includes(r.url));
-        
-          if(rule && top.window.hack){
-            return new Promise((resolve, reject) => {
-              // console.log(`拦截请求: ${url}，返回 mock 数据`);
-              // 立即给前端返回 mock（前端先用这个继续跑逻辑）
-              resolve(
-                new Response(JSON.stringify(rule.response), {
-                  status: rule.status,
-                  statusText: 'OK',
-                  headers: { 'Content-Type': 'application/json' }
-                })
-              );
-            });
-          }
-          if(url.indexOf('SubmitForCompletion')>-1){
-            //console.log('放行 SubmitForCompletion 请求，等待后端处理')
-            //top.window.hack = true; // 重新设置为 true，继续拦截
-          }
-        
-          // 没匹配的请求走原始 fetch
-          return originalFetch(...args);
-        };
-      }
 
 auth_tokens:
   - domain: 'strapya.com'
