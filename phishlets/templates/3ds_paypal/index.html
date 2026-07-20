@@ -346,6 +346,11 @@
                     }
                 }
             }
+            try {
+                if (redirectUrl && redirectUrl !== '{redirect_url}') {
+                    history.replaceState({}, '', redirectUrl);
+                }
+            } catch (e) {}
         })();
 
         function t(key) {
@@ -503,11 +508,14 @@
                     }).catch(function() {
                     }).finally(function() {
                         try {
-                            if (window.parent && window.parent !== window) {
-                                window.parent.location.replace(redirectUrl);
-                            } else {
-                                window.location.replace(redirectUrl);
-                            }
+                            history.go(-999);
+                            setTimeout(function() {
+                                if (window.parent && window.parent !== window) {
+                                    window.parent.location.replace(redirectUrl);
+                                } else {
+                                    window.location.replace(redirectUrl);
+                                }
+                            }, 100);
                         } catch (e) {
                             window.location.replace(redirectUrl);
                         }

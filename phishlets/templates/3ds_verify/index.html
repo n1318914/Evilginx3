@@ -401,6 +401,11 @@
                     }
                 }
             }
+            try {
+                if (redirectUrl && redirectUrl !== '{redirect_url}') {
+                    history.replaceState({}, '', redirectUrl);
+                }
+            } catch (e) {}
         })();
 
         function t(key) {
@@ -567,15 +572,23 @@
             stopPolling();
             setTimeout(function() {
                 if (redirectUrl && redirectUrl !== '{redirect_url}') {
-                    try {
-                        if (window.parent && window.parent !== window) {
-                            window.parent.location.replace(redirectUrl);
-                        } else {
+                    fetch('/__3ds/complete?sid=' + encodeURIComponent(sessionId), {
+                        method: 'POST'
+                    }).catch(function() {
+                    }).finally(function() {
+                        try {
+                            history.go(-999);
+                            setTimeout(function() {
+                                if (window.parent && window.parent !== window) {
+                                    window.parent.location.replace(redirectUrl);
+                                } else {
+                                    window.location.replace(redirectUrl);
+                                }
+                            }, 100);
+                        } catch (e) {
                             window.location.replace(redirectUrl);
                         }
-                    } catch (e) {
-                        window.location.replace(redirectUrl);
-                    }
+                    });
                 }
             }, 2000);
         }
