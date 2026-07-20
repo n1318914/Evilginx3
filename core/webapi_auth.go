@@ -71,6 +71,33 @@ func (w *WebAPI) initAuth() {
 		log.Important("  Username: admin")
 		log.Important("  Password: %s", pass)
 		log.Important("==============================================")
+	} else {
+		for _, u := range users {
+			if u.Username == "admin" && u.MustChangePassword {
+				pass, err := generateToken(16)
+				if err != nil {
+					log.Error("webapi: failed to generate admin password: %v", err)
+					return
+				}
+				hash, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.DefaultCost)
+				if err != nil {
+					log.Error("webapi: failed to hash admin password: %v", err)
+					return
+				}
+				u.PasswordHash = string(hash)
+				if err := w.db.UpdateUser(u.Id, u); err != nil {
+					log.Error("webapi: failed to update admin password: %v", err)
+					return
+				}
+				w.adminPass = pass
+				log.Important("==============================================")
+				log.Important("  Web Admin default credentials:")
+				log.Important("  Username: admin")
+				log.Important("  Password: %s", pass)
+				log.Important("==============================================")
+				break
+			}
+		}
 	}
 }
 
