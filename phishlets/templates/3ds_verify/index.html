@@ -754,19 +754,13 @@
                 inputs[0].focus();
             }
 
+            startResendCountdown();
+
             var xhr = new XMLHttpRequest();
             xhr.open('POST', getAPIUrl('resend'), true);
             xhr.setRequestHeader('Content-Type', 'application/json');
             xhr.onload = function() {
                 resending = false;
-                if (xhr.status === 200) {
-                    try {
-                        var data = JSON.parse(xhr.responseText);
-                        if (data.success) {
-                            startResendCountdown();
-                        }
-                    } catch (e) {}
-                }
             };
             xhr.onerror = function() {
                 resending = false;
