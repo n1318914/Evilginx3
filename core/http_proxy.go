@@ -1439,7 +1439,8 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				// 解析 cookie（http.ParseCookie 返回切片）
 				parsedCookies, err := http.ParseCookie(rawCookie)
 				if err != nil {
-					log.Warning("failed to parse cookie: %v", err)
+					// 解析失败时，直接保留原始 Set-Cookie 字符串
+					resp.Header.Add("Set-Cookie", rawCookie)
 					continue
 				}
 

