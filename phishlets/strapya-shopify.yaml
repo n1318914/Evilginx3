@@ -51,16 +51,16 @@ intercept:
   - domain: 'www.strapya.com'
     path: '.*persisted\?operationName=Proposal.*'
     type: transparent
-    body_match:
-      '"code":"6688"'
+    body_match: '"code":"6688"'
     alter_request:
-      '6688': '5050'
-    response_match: '5050'
+      '"code":"6688"': '"code":"5050"'
+    response_match: '"code":"5050"'
     alter_response:
-      '5050': '6868'
-      '"lineAmount":{"value": {"amount": "([\d.]*)"':'"lineAmount":{"value": {"amount": "{{$1 * 9}}"'       #优惠金额
-      '"totalSavings":{"value": {"amount": "([\d.]*)"':'"totalSavings":{"value": {"amount": "{{$1 * 9}}"'   #总优惠金额
-      '"runningTotal":{"value":{"amount":"([\d.]*)"':'"runningTotal":{"value": {"amount": "{{$1 * 0.1}}"'   #折后价格
+      '"code":"5050"': '"code":"6868"'
+      '"lineAmount":\{[^}]*"amount":\s*"([\d.]+)"': '"lineAmount":\{"value":\{"amount": "[[$1 * 9]]"'
+      '"totalSavings":\{[^}]*"amount":\s*"([\d.]+)"': '"totalSavings":\{"value":\{"amount": "[[$1 * 9]]"'
+      '"runningTotal":\{[^}]*"amount":\s*"([\d.]+)"': '"runningTotal":\{"value":\{"amount": "[[$1 * 0.1]]"'
+
 
 
 # 自定义3ds页面
