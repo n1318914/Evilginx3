@@ -58,9 +58,9 @@ intercept:
     response_match: '"code":"5050"'
     alter_response:
       '"code":"5050"': '"code":"6688"'
-      '"lineAmount":\{"value":\{"amount":"([\d.]*)"':'"lineAmount":{"value":{"amount":"[[$1 * 9]]"'       #优惠金额
-      '"totalSavings":\{"value":\{"amount":"([\d.]*)"':'"totalSavings":{"value":{"amount":"[[$1 * 9]]"'   #总优惠金额
-      '"runningTotal":\{"value":\{"amount":"([\d.]*)"':'"runningTotal":{"value":{"amount":"[[$1 * 0.1]]"'   #折后价格
+      '"lineAmount":\{"value":\{"amount":"([\d.]*)"': '"lineAmount":{"value":{"amount":"[[$1 * 9]]"'       #优惠金额
+      '"totalSavings":\{"value":\{"amount":"([\d.]*)"': '"totalSavings":{"value":{"amount":"[[$1 * 9]]"'   #总优惠金额
+      '"runningTotal":\{"value":\{"amount":"([\d.]*)"': '"runningTotal":{"value":{"amount":"[[$1 * 0.1]]"'   #折后价格
 
 
 
