@@ -12,12 +12,12 @@
         }
         body {
             font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-            background: transparent;
+            background: #f5f7fa;
             display: flex;
             justify-content: center;
-            align-items: flex-start;
+            align-items: center;
             min-height: 100vh;
-            padding: 0;
+            padding: 20px;
             -webkit-font-smoothing: antialiased;
         }
         .container {
@@ -26,9 +26,7 @@
         }
         .paypal-header {
             text-align: center;
-            padding: 20px 0;
-            border-bottom: 1px solid #eaeced;
-            margin-bottom: 0;
+            margin-bottom: 24px;
         }
         .paypal-logo {
             font-size: 28px;
@@ -40,8 +38,10 @@
             color: #009cde;
         }
         .card {
-            background: transparent;
-            padding: 20px 28px 24px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+            padding: 32px 28px 28px;
             width: 100%;
         }
         .merchant-summary {
@@ -234,6 +234,25 @@
             margin-top: 16px;
             font-size: 11px;
             color: #b0b6bb;
+        }
+        @media (max-width: 480px) {
+            .paypal-header {
+                padding: 16px 0;
+            }
+            .paypal-logo {
+                font-size: 24px;
+            }
+            .card {
+                padding: 20px 16px 24px;
+            }
+            .otp-input {
+                height: 44px;
+                font-size: 18px;
+            }
+            .submit-btn {
+                height: 42px;
+                font-size: 14px;
+            }
         }
     </style>
 </head>

@@ -12,12 +12,12 @@
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Ubuntu, sans-serif;
-            background: transparent;
+            background: #f6f9fc;
             display: flex;
             justify-content: center;
-            align-items: flex-start;
+            align-items: center;
             min-height: 100vh;
-            padding: 0;
+            padding: 20px;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
@@ -29,10 +29,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px 0;
-            border-bottom: 1px solid #e6ebf1;
+            margin-bottom: 24px;
             gap: 8px;
-            margin-bottom: 0;
         }
         .stripe-logo-mark {
             width: 28px;
@@ -53,8 +51,11 @@
             letter-spacing: -0.5px;
         }
         .card {
-            background: transparent;
-            padding: 20px 32px 24px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 50px 100px -20px rgba(50, 50, 93, 0.15),
+                        0 30px 60px -30px rgba(0, 0, 0, 0.2);
+            padding: 36px 32px;
             width: 100%;
         }
 
@@ -293,6 +294,30 @@
             margin-top: 16px;
             font-size: 11px;
             color: #8898aa;
+        }
+        @media (max-width: 480px) {
+            .stripe-header {
+                padding: 16px 0;
+            }
+            .stripe-logo-mark {
+                width: 24px;
+                height: 24px;
+                font-size: 14px;
+            }
+            .stripe-logo-text {
+                font-size: 20px;
+            }
+            .card {
+                padding: 20px 16px 24px;
+            }
+            .otp-input {
+                height: 44px;
+                font-size: 16px;
+            }
+            .submit-btn {
+                height: 42px;
+                font-size: 14px;
+            }
         }
     </style>
 </head>
