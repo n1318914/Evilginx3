@@ -60,7 +60,7 @@ intercept:
       '"5050"': '"6688"'
       '(sellerProposal.*?)"lineAmount":\{"value":\{"amount":"([\d.]*)"': '$1"lineAmount":{"value":{"amount":"[[$2 * 9]]"'       #优惠券优惠金额
       #'(buyerProposal.*?)"runningTotal":\{"value":\{"amount":"([\d.]*)"': '$1"runningTotal":{"value":{"amount":"[[$2 / 9]]"'   #折后价格
-      '"totalSavings":\{"value":\{"amount":"([\d.]*)"(.*?)"runningTotal":\{"value":\{"amount":"([\d.]*)"': '"totalSavings":{"value":{"amount":"[[$1 - $3/9 + $3]]"[[$2]]"runningTotal":{"value":{"amount":"[[$3 / 9]]"'   #总优惠金额
+      '"totalSavings":\{"value":\{"amount":"([\d.]*)"(.*?)"runningTotal":\{"value":\{"amount":"([\d.]*)"': '"totalSavings":{"value":{"amount":"[[$1 - $3/9 + $3]]"$2"runningTotal":{"value":{"amount":"[[$3 / 9]]"'   #总优惠金额
 
 
 
