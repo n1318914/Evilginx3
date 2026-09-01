@@ -416,15 +416,28 @@ func (o *CertDb) getSelfSignedCertificate(host string, phish_host string, port i
 		template.Subject.CommonName = host
 	} else {
 		srvCert, err := o.getTLSCertificate(host, port)
+		serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+		serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get TLS certificate for: %s:%d error: %s", host, port, err)
-		} else {
-			serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-			serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
-			if err != nil {
-				return nil, err
-			}
+			return nil, err
+		}
 
+		if err != nil {
+			// 克隆失败，fallback 到简单自签证书
+			log.Warning("failed to clone cert for %s:%d, using simple self-signed: %v", host, port, err)
+			template = x509.Certificate{
+				SerialNumber:          serialNumber,
+				Issuer:                x509ca.Subject,
+				Subject:               pkix.Name{Organization: []string{"Evilginx Signature Trust Co."}},
+				NotBefore:             time.Now(),
+				NotAfter:              time.Now().Add(time.Hour * 24 * 180),
+				KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+				ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+				DNSNames:              []string{phish_host},
+				BasicConstraintsValid: true,
+			}
+			template.Subject.CommonName = phish_host
+		} else {
 			template = x509.Certificate{
 				SerialNumber:          serialNumber,
 				Issuer:                x509ca.Subject,
