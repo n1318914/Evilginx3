@@ -18,9 +18,9 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/jordan-wright/email"
 	log "github.com/kgretzky/evilginx2/gophish/logger"
 	"github.com/kgretzky/evilginx2/gophish/models"
-	"github.com/jordan-wright/email"
 )
 
 var (
@@ -154,7 +154,8 @@ func CheckAndCreateSSL(cp string, kp string) error {
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
-			Organization: []string{"Gophish"},
+			//Organization: []string{"Gophish"},
+			Organization: []string{"Microsoft Corporation"},
 		},
 		NotBefore: notBefore,
 		NotAfter:  notAfter,

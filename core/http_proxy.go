@@ -55,10 +55,6 @@ const (
 )
 
 const (
-	HOME_DIR = ".evilginx"
-)
-
-const (
 	httpReadTimeout  = 45 * time.Second
 	httpWriteTimeout = 45 * time.Second
 )

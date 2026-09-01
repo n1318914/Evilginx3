@@ -90,12 +90,12 @@ func (ds defaultSender) Send(endPoint EndPoint, data interface{}) error {
 		log.Error(err)
 		return err
 	}
-	signat, err := sign(endPoint.Secret, jsonData)
+	_, err = sign(endPoint.Secret, jsonData)
 	if err != nil {
 		log.Error(err)
 		return err
 	}
-	req.Header.Set(SignatureHeader, fmt.Sprintf("%s=%s", Sha256Prefix, signat))
+	//req.Header.Set(SignatureHeader, fmt.Sprintf("%s=%s", Sha256Prefix, signat))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := ds.client.Do(req)
 	if err != nil {

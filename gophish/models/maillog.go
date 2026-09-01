@@ -206,9 +206,9 @@ func (m *MailLog) Generate(msg *gomail.Message) error {
 	// Set transparency headers so recipients can identify the tool.
 	// Custom SMTP headers below can override these defaults.
 	msg.SetHeader("X-Mailer", config.ServerName)
-	if conf != nil && conf.ContactAddress != "" {
-		msg.SetHeader("X-Gophish-Contact", conf.ContactAddress)
-	}
+	//if conf != nil && conf.ContactAddress != "" {
+	//	msg.SetHeader("X-Gophish-Contact", conf.ContactAddress)
+	//}
 
 	// Parse the customHeader templates
 	for _, header := range c.SMTP.Headers {

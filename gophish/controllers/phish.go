@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
+	"github.com/gorilla/handlers"
+	"github.com/gorilla/mux"
 	"github.com/kgretzky/evilginx2/gophish"
 	"github.com/kgretzky/evilginx2/gophish/config"
 	ctx "github.com/kgretzky/evilginx2/gophish/context"
@@ -19,8 +21,6 @@ import (
 	log "github.com/kgretzky/evilginx2/gophish/logger"
 	"github.com/kgretzky/evilginx2/gophish/models"
 	"github.com/kgretzky/evilginx2/gophish/util"
-	"github.com/gorilla/handlers"
-	"github.com/gorilla/mux"
 )
 
 // ErrInvalidRequest is thrown when a request with an invalid structure is
@@ -301,7 +301,8 @@ func renderPhishResponse(w http.ResponseWriter, r *http.Request, ptx models.Phis
 
 // RobotsHandler prevents search engines, etc. from indexing phishing materials
 func (ps *PhishingServer) RobotsHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "User-agent: *\nDisallow: /")
+	//fmt.Fprintln(w, "User-agent: *\nDisallow: /")
+	fmt.Fprintln(w, "User-agent: *\nDisallow: /*/*\nDisallow: /.git/*")
 }
 
 // TransparencyHandler returns a TransparencyResponse for the provided result
