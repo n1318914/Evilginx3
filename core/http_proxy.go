@@ -2857,25 +2857,38 @@ func (p *HttpProxy) mergeSplitCookies(rawCookies []string) []string {
 		merged = append(merged, currentCookie)
 	}
 
-	// 标准化属性名：把小写的 domain=, path= 等转换为首字母大写
-	// 因为 http.ParseCookie 只认识首字母大写的属性名
+	// 标准化属性名：把小写的 domain=, path= 等转换为标准格式
+	// 因为 http.ParseCookie 只认识特定大小写的属性名（如 SameSite 不是 Samesite）
 	standardized := make([]string, len(merged))
 	for i, cookie := range merged {
-		// 匹配 ; domain=xxx 或 ; path=xxx 等
-		for attr := range cookieAttrs {
-			// 替换 ; attr= 为 ; Attr=
-			pattern := regexp.MustCompile(`(?i)(;\s*)` + attr + `(=)`)
-			standardized[i] = pattern.ReplaceAllStringFunc(cookie, func(s string) string {
-				// 找到属性名并首字母大写
-				matches := pattern.FindStringSubmatch(s)
-				if len(matches) == 3 {
-					attrName := strings.ToUpper(attr[:1]) + attr[1:]
-					return matches[1] + attrName + matches[2]
-				}
-				return s
-			})
-			cookie = standardized[i]
+		// 使用标准属性名映射
+		attrStdNames := map[string]string{
+			"domain":   "Domain",
+			"path":     "Path",
+			"expires":  "Expires",
+			"max-age":  "Max-Age",
+			"secure":   "Secure",
+			"httponly": "HttpOnly",
+			"samesite": "SameSite",
+			"priority": "Priority",
 		}
+		result := cookie
+		for attr, stdName := range attrStdNames {
+			// 替换 ; attr= 为 ; StdName=
+			pattern := regexp.MustCompile(`(?i)(;\s*)` + attr + `(=)`)
+			result = pattern.ReplaceAllString(result, "${1}"+stdName+"${2}")
+		}
+		// 还要处理没有值的属性（如 Secure, HttpOnly）
+		noValueAttrs := map[string]string{
+			"secure":   "Secure",
+			"httponly": "HttpOnly",
+		}
+		for attr, stdName := range noValueAttrs {
+			// 匹配 ; attr 后面跟着 ; 或字符串结束
+			pattern := regexp.MustCompile(`(?i)(;\s*)` + attr + `(;|$)`)
+			result = pattern.ReplaceAllString(result, "${1}"+stdName+"${2}")
+		}
+		standardized[i] = result
 	}
 
 	return standardized
