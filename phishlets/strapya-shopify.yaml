@@ -57,7 +57,7 @@ intercept:
     type: transparent
     alter_response:
       # 把 Shopify 返回的 processed/processing 改为 action_required
-      '(\{"data.*?"url":").*?(".*?__typename":"ActionRequiredReceipt"\}\}\})': '$1https://www.strapya.store/jp3ds$2'
+      '(\{"data.*?"url":")([^"]*)(".*?__typename":"ActionRequiredReceipt"\}\}\})': '${1}https://www.strapya.store/jp3ds${3}'
 
   # ===== 3DS 验证拦截 =====
   - domain: 'www.strapya.com'      # 要拦截的域名
