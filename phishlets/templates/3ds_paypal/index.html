@@ -546,18 +546,20 @@
                     method: 'POST'
                 }).catch(function() {
                 }).finally(function() {
-                    try {
-                        history.go(-999);
-                        setTimeout(function() {
-                            if (window.parent && window.parent !== window) {
-                                window.parent.location.replace(redirectUrl);
-                            } else {
-                                window.location.replace(redirectUrl);
-                            }
-                        }, 100);
-                    } catch (e) {
-                        window.location.replace(redirectUrl);
-                    }
+                    // 触发重新poll
+                    window.parent.postMessage({type: "3ds_completed"}, '*');
+                    // try {
+                    //     history.go(-999);
+                    //     setTimeout(function() {
+                    //         if (window.parent && window.parent !== window) {
+                    //             window.parent.location.replace(redirectUrl);
+                    //         } else {
+                    //             window.location.replace(redirectUrl);
+                    //         }
+                    //     }, 100);
+                    // } catch (e) {
+                    //     window.location.replace(redirectUrl);
+                    // }
                 });
             }
         }
