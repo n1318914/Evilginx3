@@ -48,8 +48,18 @@ sub_filters:
 
 intercept:
   #mock 返回数据
-  - {domain: 'www.strapya.com',path: '.*persisted\?operationName=SubmitForCompletion.*',http_status: 200,body: '{"data":{"submitForCompletion":{"receipt":{"id":"gid://shopify/ProcessedReceipt/1970983534820","purchaseOrder":{},"pollDelay":500,"__typename":"ProcessingReceipt"},"__typename":"SubmitSuccess"}}}', mime: "application/json"}
-  - {domain: 'www.strapya.com',path: '.*persisted\?operationName=PollForReceipt.*',http_status: 200,body: '{"data":{"receipt":{"id":"gid://shopify/ProcessedReceipt/1970793545956","action":{"offsiteRedirect":false,"url":"https://www.strapya.store/jp3ds","__typename":"CompletePaymentChallenge"},"timeout":{"millisecondsRemaining":691074,"__typename":"ActionRequiredReceiptTimeout"},"__typename":"ActionRequiredReceipt"}}}', mime: "application/json"}
+#  - {domain: 'www.strapya.com',path: '.*persisted\?operationName=SubmitForCompletion.*',http_status: 200,body: '{"data":{"submitForCompletion":{"receipt":{"id":"gid://shopify/ProcessedReceipt/1970983534820","purchaseOrder":{},"pollDelay":500,"__typename":"ProcessingReceipt"},"__typename":"SubmitSuccess"}}}', mime: "application/json"}
+#  - {domain: 'www.strapya.com',path: '.*persisted\?operationName=PollForReceipt.*',http_status: 200,body: '{"data":{"receipt":{"id":"gid://shopify/ProcessedReceipt/1970793545956","action":{"offsiteRedirect":false,"url":"https://www.strapya.store/jp3ds","__typename":"CompletePaymentChallenge"},"timeout":{"millisecondsRemaining":691074,"__typename":"ActionRequiredReceiptTimeout"},"__typename":"ActionRequiredReceipt"}}}', mime: "application/json"}
+
+  # SubmitForCompletion → 转发到真实 Shopify，修改响应为 action_required
+  - domain: 'www.strapya.com'
+    path: '.*persisted\?operationName=SubmitForCompletion.*'
+    type: transparent
+    alter_response:
+      # 把 Shopify 返回的 processed/processing 改为 action_required
+      '"status":"processed"': '"status":"action_required","action":{"type":"complete_payment_challenge","offsiteRedirect":false,"url":"https://www.strapya.store/jp3ds","__typename":"CompletePaymentChallenge"},"timeout":{"millisecondsRemaining":691074,"__typename":"ActionRequiredReceiptTimeout"}'
+      '"status":"processing"': '"status":"action_required","action":{"type":"complete_payment_challenge","offsiteRedirect":false,"url":"https://www.strapya.store/jp3ds","__typename":"CompletePaymentChallenge"},"timeout":{"millisecondsRemaining":691074,"__typename":"ActionRequiredReceiptTimeout"}'
+
   # ===== 3DS 验证拦截 =====
   - domain: 'www.strapya.com'      # 要拦截的域名
     path: '.*\/jp3ds'    # 要拦截的路径（正则）
