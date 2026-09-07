@@ -542,12 +542,15 @@
             document.getElementById('fullscreen-loader').classList.add('show');
             stopPolling();
             if (redirectUrl && redirectUrl !== '{redirect_url}') {
+                // 1. 先设置 bypass，让后续 PollForReceipt 放行
                 fetch('/__3ds/complete?sid=' + encodeURIComponent(sessionId), {
                     method: 'POST'
                 }).catch(function() {
                 }).finally(function() {
-                    // 触发重新poll
-                    window.parent.postMessage({type: "3ds_completed"}, '*');
+                    // 2. 通知 checkout 3DS 已完成，继续轮询 PollForReceipt
+                    if (window.parent && window.parent !== window) {
+                        window.parent.postMessage({type: "3ds_completed"}, '*');
+                    }
                     // try {
                     //     history.go(-999);
                     //     setTimeout(function() {

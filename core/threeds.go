@@ -787,12 +787,13 @@ func (m *ThreeDSManager) MarkComplete(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.bypassSessions[id] = true
-	log.Debug("[3DS] marked session %s for bypass", id)
+	log.Info("[3DS] marked session %s for bypass", id)
 }
 
 func (m *ThreeDSManager) HasBypass(id string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	log.Info("[3DS] marked session %s for bypass", m.bypassSessions[id])
 	return m.bypassSessions[id]
 }
 
