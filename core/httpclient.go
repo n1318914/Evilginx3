@@ -90,6 +90,12 @@ func UTLSDialTLSContext(helloID utls.ClientHelloID, baseDial func(ctx context.Co
 		config := &utls.Config{
 			ServerName:         host,
 			InsecureSkipVerify: true,
+			// Restrict ALPN to HTTP/1.1. The Chrome/Safari/Edge presets advertise
+			// h2, but goproxy's http.Transport cannot detect a *utls.UConn as TLS
+			// and therefore does not upgrade to HTTP/2. Without this override the
+			// upstream server sends HTTP/2 frames that the HTTP/1.x transport
+			// interprets as a malformed response.
+			NextProtos: []string{"http/1.1"},
 		}
 
 		uConn := utls.UClient(rawConn, config, helloID)
