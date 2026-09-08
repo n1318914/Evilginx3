@@ -90,15 +90,26 @@ func UTLSDialTLSContext(helloID utls.ClientHelloID, baseDial func(ctx context.Co
 		config := &utls.Config{
 			ServerName:         host,
 			InsecureSkipVerify: true,
-			// Restrict ALPN to HTTP/1.1. The Chrome/Safari/Edge presets advertise
-			// h2, but goproxy's http.Transport cannot detect a *utls.UConn as TLS
-			// and therefore does not upgrade to HTTP/2. Without this override the
-			// upstream server sends HTTP/2 frames that the HTTP/1.x transport
-			// interprets as a malformed response.
-			NextProtos: []string{"http/1.1"},
 		}
 
 		uConn := utls.UClient(rawConn, config, helloID)
+
+		// Browser presets (HelloChrome_Auto, HelloFirefox_Auto, etc.) hardcode
+		// ALPN protocols ["h2", "http/1.1"]. goproxy's http.Transport cannot
+		// detect a *utls.UConn as TLS and therefore does not upgrade to HTTP/2,
+		// so an upstream server that negotiates h2 sends HTTP/2 frames that the
+		// HTTP/1.x transport interprets as malformed. Replace the ALPN extension
+		// with http/1.1 only to force the upstream response to stay HTTP/1.x.
+		// The ALPN extension (id 16) is still present, so the JA3 fingerprint is
+		// preserved.
+		for i, ext := range uConn.Extensions {
+			if _, ok := ext.(*utls.ALPNExtension); ok {
+				uConn.Extensions[i] = &utls.ALPNExtension{
+					AlpnProtocols: []string{"http/1.1"},
+				}
+			}
+		}
+
 		if err := uConn.HandshakeContext(ctx); err != nil {
 			rawConn.Close()
 			return nil, err
