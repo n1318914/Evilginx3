@@ -3228,7 +3228,9 @@ func (p *HttpProxy) setProxy(enabled bool, ptype string, address string, port in
 // Go standard library fingerprint to one that matches a real browser.
 func (p *HttpProxy) configureUTLSFingerprinting() error {
 	fpName := p.cfg.GetJa3Fingerprint()
+	log.Debug("JA3 fingerprint config value: %q", fpName)
 	if fpName == "" || fpName == "none" || fpName == "default" {
+		log.Debug("JA3 fingerprint spoofing disabled")
 		return nil
 	}
 
@@ -3247,6 +3249,9 @@ func (p *HttpProxy) configureUTLSFingerprinting() error {
 
 	p.Proxy.Tr.DialTLSContext = UTLSDialTLSContext(helloID, baseDial)
 	log.Info("JA3 fingerprint spoofing enabled: %s", fpName)
+	if baseDial != nil {
+		log.Debug("JA3 fingerprint spoofing: preserving upstream proxy dialer")
+	}
 	return nil
 }
 

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kgretzky/evilginx2/log"
+
 	utls "github.com/refraction-networking/utls"
 )
 
@@ -77,8 +79,11 @@ func UTLSDialTLSContext(helloID utls.ClientHelloID, baseDial func(ctx context.Co
 	}
 
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		log.Debug("utls: dialing %s with fingerprint %v", addr, helloID)
+
 		rawConn, err := baseDial(ctx, network, addr)
 		if err != nil {
+			log.Debug("utls: base dial to %s failed: %v", addr, err)
 			return nil, err
 		}
 
@@ -103,7 +108,8 @@ func UTLSDialTLSContext(helloID utls.ClientHelloID, baseDial func(ctx context.Co
 		// The ALPN extension (id 16) is still present, so the JA3 fingerprint is
 		// preserved.
 		for i, ext := range uConn.Extensions {
-			if _, ok := ext.(*utls.ALPNExtension); ok {
+			if alpn, ok := ext.(*utls.ALPNExtension); ok {
+				log.Debug("utls: overriding ALPN for %s from %v to [http/1.1]", addr, alpn.AlpnProtocols)
 				uConn.Extensions[i] = &utls.ALPNExtension{
 					AlpnProtocols: []string{"http/1.1"},
 				}
@@ -111,9 +117,13 @@ func UTLSDialTLSContext(helloID utls.ClientHelloID, baseDial func(ctx context.Co
 		}
 
 		if err := uConn.HandshakeContext(ctx); err != nil {
+			log.Debug("utls: handshake with %s failed: %v", addr, err)
 			rawConn.Close()
 			return nil, err
 		}
+
+		state := uConn.ConnectionState()
+		log.Debug("utls: handshake complete with %s version=0x%x alpn=%q", addr, state.Version, state.NegotiatedProtocol)
 
 		return uConn, nil
 	}
