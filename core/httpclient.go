@@ -99,6 +99,15 @@ func UTLSDialTLSContext(helloID utls.ClientHelloID, baseDial func(ctx context.Co
 
 		uConn := utls.UClient(rawConn, config, helloID)
 
+		// uTLS presets are applied lazily during HandshakeContext. Build the
+		// ClientHello state explicitly so we can inspect and modify extensions
+		// before the handshake goes on the wire.
+		if err := uConn.BuildHandshakeState(); err != nil {
+			log.Debug("utls: build handshake state for %s failed: %v", addr, err)
+			rawConn.Close()
+			return nil, err
+		}
+
 		// Browser presets (HelloChrome_Auto, HelloFirefox_Auto, etc.) hardcode
 		// ALPN protocols ["h2", "http/1.1"]. goproxy's http.Transport cannot
 		// detect a *utls.UConn as TLS and therefore does not upgrade to HTTP/2,
@@ -107,13 +116,18 @@ func UTLSDialTLSContext(helloID utls.ClientHelloID, baseDial func(ctx context.Co
 		// with http/1.1 only to force the upstream response to stay HTTP/1.x.
 		// The ALPN extension (id 16) is still present, so the JA3 fingerprint is
 		// preserved.
+		alpnFound := false
 		for i, ext := range uConn.Extensions {
 			if alpn, ok := ext.(*utls.ALPNExtension); ok {
 				log.Debug("utls: overriding ALPN for %s from %v to [http/1.1]", addr, alpn.AlpnProtocols)
 				uConn.Extensions[i] = &utls.ALPNExtension{
 					AlpnProtocols: []string{"http/1.1"},
 				}
+				alpnFound = true
 			}
+		}
+		if !alpnFound {
+			log.Warning("utls: no ALPN extension found for %s, cannot restrict to HTTP/1.1", addr)
 		}
 
 		if err := uConn.HandshakeContext(ctx); err != nil {
