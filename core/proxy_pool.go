@@ -193,3 +193,49 @@ func (p *HttpProxy) getSessionRoundTripper(s *Session, userAgent string) goproxy
 		return tr.RoundTrip(r)
 	})
 }
+
+// ParseProxyPoolString parses a proxy given in the common shorthand format:
+//
+//	[type://]host:port[:username[:password]]
+//
+// If no scheme is provided, the proxy type defaults to "http". Supported
+// schemes are http, https, socks5 and socks5h.
+func ParseProxyPoolString(s string) (*ProxyConfig, error) {
+	if s == "" {
+		return nil, fmt.Errorf("empty proxy string")
+	}
+
+	ptype := "http"
+	if idx := strings.Index(s, "://"); idx != -1 {
+		ptype = strings.ToLower(s[:idx])
+		s = s[idx+3:]
+	}
+
+	if ptype != "http" && ptype != "https" && ptype != "socks5" && ptype != "socks5h" {
+		return nil, fmt.Errorf("unsupported proxy type: %s", ptype)
+	}
+
+	parts := strings.SplitN(s, ":", 4)
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("proxy string must be host:port[:username[:password]]")
+	}
+
+	port, err := strconv.Atoi(parts[1])
+	if err != nil || port <= 0 || port > 65535 {
+		return nil, fmt.Errorf("invalid port: %s", parts[1])
+	}
+
+	pc := &ProxyConfig{
+		Type:    ptype,
+		Address: parts[0],
+		Port:    port,
+		Enabled: true,
+	}
+	if len(parts) >= 3 {
+		pc.Username = parts[2]
+	}
+	if len(parts) >= 4 {
+		pc.Password = parts[3]
+	}
+	return pc, nil
+}
