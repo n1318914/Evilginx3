@@ -26,6 +26,7 @@ type ProxyPool struct {
 	mu        sync.Mutex
 	proxies   []*ProxyConfig
 	nextIndex int
+	key       string
 }
 
 // Pick returns the next proxy in round-robin order. It is safe for concurrent
@@ -64,11 +65,12 @@ func (p *HttpProxy) getProxyPool(l *Lure) *ProxyPool {
 	defer p.proxyPoolsMtx.Unlock()
 
 	pool, ok := p.proxyPools[l.Id]
-	if ok && len(pool.proxies) == len(enabled) {
+	currentKey := proxyPoolKey(enabled)
+	if ok && pool.key == currentKey {
 		return pool
 	}
 
-	pool = &ProxyPool{proxies: enabled}
+	pool = &ProxyPool{proxies: enabled, key: currentKey}
 	p.proxyPools[l.Id] = pool
 	return pool
 }
@@ -118,6 +120,17 @@ func proxyConfigKey(pc *ProxyConfig) string {
 		return ""
 	}
 	return fmt.Sprintf("%s://%s:%s@%s:%d", pc.Type, pc.Username, pc.Password, pc.Address, pc.Port)
+}
+
+// proxyPoolKey returns a stable key for a slice of enabled proxy configs.
+// It is used to invalidate the per-lure proxy pool cache when the configuration
+// changes (type, address, port, credentials, or enabled status).
+func proxyPoolKey(proxies []*ProxyConfig) string {
+	var parts []string
+	for _, pc := range proxies {
+		parts = append(parts, proxyConfigKey(pc))
+	}
+	return strings.Join(parts, "|")
 }
 
 // getSessionRoundTripper returns a goproxy RoundTripper for a session that has
