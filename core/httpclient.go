@@ -66,6 +66,49 @@ func UTLSFingerprintNames() []string {
 	return names
 }
 
+// GetFingerprintName returns the canonical name for a supported uTLS
+// ClientHelloID. It is used for logging and transport caching.
+func GetFingerprintName(id utls.ClientHelloID) string {
+	switch id {
+	case utls.HelloChrome_Auto:
+		return "chrome"
+	case utls.HelloFirefox_Auto:
+		return "firefox"
+	case utls.HelloSafari_Auto:
+		return "safari"
+	case utls.HelloEdge_Auto:
+		return "edge"
+	case utls.HelloIOS_Auto:
+		return "ios"
+	case utls.HelloRandomized:
+		return "random"
+	default:
+		return "unknown"
+	}
+}
+
+// ParseUserAgentFingerprint maps a User-Agent string to the uTLS fingerprint
+// that best matches the browser it represents. This reduces JA3/UA mismatch
+// when ja3_fingerprint is set to "auto".
+func ParseUserAgentFingerprint(ua string) utls.ClientHelloID {
+	l := strings.ToLower(ua)
+
+	switch {
+	case strings.Contains(l, "edg/") || strings.Contains(l, "edgios/") || strings.Contains(l, "edga/"):
+		return utls.HelloEdge_Auto
+	case strings.Contains(l, "firefox") && !strings.Contains(l, "seamonkey"):
+		return utls.HelloFirefox_Auto
+	case strings.Contains(l, "iphone"), strings.Contains(l, "ipad"), strings.Contains(l, "ipod"):
+		return utls.HelloIOS_Auto
+	case strings.Contains(l, "chrome"), strings.Contains(l, "chromium"), strings.Contains(l, "crios"):
+		return utls.HelloChrome_Auto
+	case strings.Contains(l, "safari"):
+		return utls.HelloSafari_Auto
+	default:
+		return utls.HelloChrome_Auto
+	}
+}
+
 // UTLSDialTLSContext returns a DialTLSContext function that performs TLS
 // handshakes using a uTLS browser fingerprint. The optional baseDial is used
 // to establish the underlying TCP connection so that upstream SOCKS5/HTTP

