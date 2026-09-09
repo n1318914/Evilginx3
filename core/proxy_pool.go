@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -189,11 +190,16 @@ func (p *HttpProxy) getSessionRoundTripper(s *Session, userAgent string) goproxy
 		tr = NewUTLSTransport(helloID, baseDialCtx)
 	} else {
 		tr = &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 20,
-			IdleConnTimeout:     90 * time.Second,
-			TLSHandshakeTimeout: 10 * time.Second,
-			DialContext:         baseDialCtx,
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   20,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			ResponseHeaderTimeout: 30 * time.Second,
+			DialContext:           baseDialCtx,
+			// Disable HTTP/2 to avoid Go's HTTP/2 fingerprint detection
+			ForceAttemptHTTP2: false,
+			TLSNextProto:      make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
 		}
 	}
 
