@@ -3,10 +3,10 @@ var groups = []
 // Save attempts to POST or PUT to /groups/
 function save(id) {
     var targets = []
-    var table = $("#targetsTable").DataTable()
-    var data = table.rows().data()
-    for (var i = 0; i < data.length; i++) {
-        var target = data[i]
+    // Use rows().data().toArray() to get all rows including deferred-rendered ones
+    var rows = $("#targetsTable").DataTable().rows().data().toArray()
+    for (var i = 0; i < rows.length; i++) {
+        var target = rows[i]
         targets.push({
             first_name: unescapeHtml(target[0]),
             last_name: unescapeHtml(target[1]),
