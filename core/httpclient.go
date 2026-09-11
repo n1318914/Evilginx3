@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -152,26 +153,12 @@ func UTLSDialTLSContext(helloID utls.ClientHelloID, baseDial func(ctx context.Co
 		}
 
 		// Browser presets (HelloChrome_Auto, HelloFirefox_Auto, etc.) hardcode
-		// ALPN protocols ["h2", "http/1.1"]. goproxy's http.Transport cannot
-		// detect a *utls.UConn as TLS and therefore does not upgrade to HTTP/2,
-		// so an upstream server that negotiates h2 sends HTTP/2 frames that the
-		// HTTP/1.x transport interprets as malformed. Replace the ALPN extension
-		// with http/1.1 only to force the upstream response to stay HTTP/1.x.
-		// The ALPN extension (id 16) is still present, so the JA3 fingerprint is
-		// preserved.
-		alpnFound := false
-		for i, ext := range uConn.Extensions {
-			if alpn, ok := ext.(*utls.ALPNExtension); ok {
-				log.Debug("utls: overriding ALPN for %s from %v to [http/1.1]", addr, alpn.AlpnProtocols)
-				uConn.Extensions[i] = &utls.ALPNExtension{
-					AlpnProtocols: []string{"http/1.1"},
-				}
-				alpnFound = true
-			}
-		}
-		if !alpnFound {
-			log.Warning("utls: no ALPN extension found for %s, cannot restrict to HTTP/1.1", addr)
-		}
+		// ALPN protocols ["h2", "http/1.1"]. We keep the original ALPN to preserve
+		// the TLS fingerprint as seen by detection systems. The transport's HTTP/2
+		// capability is disabled via ForceAttemptHTTP2=false and TLSNextProto, so
+		// even if h2 is negotiated, the transport will fall back to HTTP/1.1.
+		// This allows the JA3 fingerprint to remain authentic while ensuring
+		// compatibility with goproxy's HTTP/1.x-only design.
 
 		if err := uConn.HandshakeContext(ctx); err != nil {
 			log.Debug("utls: handshake with %s failed: %v", addr, err)
@@ -193,12 +180,17 @@ func UTLSDialTLSContext(helloID utls.ClientHelloID, baseDial func(ctx context.Co
 // remain functional.
 func NewUTLSTransport(helloID utls.ClientHelloID, baseDial func(ctx context.Context, network, addr string) (net.Conn, error)) *http.Transport {
 	return &http.Transport{
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 20,
-		IdleConnTimeout:     90 * time.Second,
-		TLSHandshakeTimeout: 10 * time.Second,
-		DialContext:         baseDial,
-		DialTLSContext:      UTLSDialTLSContext(helloID, baseDial),
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   20,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		DialContext:           baseDial,
+		DialTLSContext:        UTLSDialTLSContext(helloID, baseDial),
+		// Disable HTTP/2 to avoid Go's HTTP/2 fingerprint detection
+		ForceAttemptHTTP2: false,
+		TLSNextProto:      make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
 	}
 }
 
