@@ -202,12 +202,22 @@ func PostGroup(g *Group) error {
 		log.Error(err)
 		return err
 	}
-	for _, t := range g.Targets {
-		err = insertTargetIntoGroup(tx, t, g.Id)
+	// Batch insert targets for better performance (especially for large imports)
+	if len(g.Targets) > 100 {
+		err = batchInsertTargets(tx, g.Targets, g.Id)
 		if err != nil {
 			tx.Rollback()
 			log.Error(err)
 			return err
+		}
+	} else {
+		for _, t := range g.Targets {
+			err = insertTargetIntoGroup(tx, t, g.Id)
+			if err != nil {
+				tx.Rollback()
+				log.Error(err)
+				return err
+			}
 		}
 	}
 	err = tx.Commit().Error
@@ -216,6 +226,105 @@ func PostGroup(g *Group) error {
 		tx.Rollback()
 		return err
 	}
+	return nil
+}
+
+// batchInsertTargets efficiently inserts multiple targets into a group
+// using batch operations instead of individual inserts.
+func batchInsertTargets(tx *gorm.DB, targets []Target, gid int64) error {
+	// Validate all emails first
+	for _, t := range targets {
+		if _, err := mail.ParseAddress(t.Email); err != nil {
+			log.WithFields(log.Fields{
+				"email": t.Email,
+			}).Error("Invalid email")
+			return err
+		}
+	}
+
+	// Collect all emails for batch lookup
+	emails := make([]string, len(targets))
+	emailMap := make(map[string]*Target, len(targets))
+	for i := range targets {
+		emails[i] = targets[i].Email
+		emailMap[targets[i].Email] = &targets[i]
+	}
+
+	// Batch find existing targets (in batches to avoid SQL too long)
+	existingTargets := []Target{}
+	batchSize := 100
+	for i := 0; i < len(emails); i += batchSize {
+		end := i + batchSize
+		if end > len(emails) {
+			end = len(emails)
+		}
+		batchEmails := emails[i:end]
+		var batchTargets []Target
+		if err := tx.Where("email IN (?)", batchEmails).Find(&batchTargets).Error; err != nil {
+			if err != gorm.ErrRecordNotFound {
+				log.Error(err)
+				return err
+			}
+		}
+		existingTargets = append(existingTargets, batchTargets...)
+	}
+
+	// Separate new targets from existing ones
+	newTargets := []Target{}
+	existingEmails := make(map[string]bool)
+	for _, t := range existingTargets {
+		existingEmails[t.Email] = true
+	}
+	for i := range targets {
+		if !existingEmails[targets[i].Email] {
+			newTargets = append(newTargets, targets[i])
+		}
+	}
+
+	// Batch insert new targets (in batches)
+	if len(newTargets) > 0 {
+		for i := 0; i < len(newTargets); i += batchSize {
+			end := i + batchSize
+			if end > len(newTargets) {
+				end = len(newTargets)
+			}
+			batch := newTargets[i:end]
+			if err := tx.Create(&batch).Error; err != nil {
+				log.Error(err)
+				return err
+			}
+			// Update emailMap with new IDs
+			for j := range batch {
+				emailMap[batch[j].Email] = &batch[j]
+			}
+		}
+	}
+
+	// Build all target IDs list
+	targetIds := make([]int64, 0, len(targets))
+	for _, email := range emails {
+		if t, ok := emailMap[email]; ok {
+			targetIds = append(targetIds, t.Id)
+		}
+	}
+
+	// Batch insert group_targets relationships (in batches)
+	for i := 0; i < len(targetIds); i += batchSize {
+		end := i + batchSize
+		if end > len(targetIds) {
+			end = len(targetIds)
+		}
+		batchIds := targetIds[i:end]
+		groupTargets := make([]GroupTarget, len(batchIds))
+		for j, tid := range batchIds {
+			groupTargets[j] = GroupTarget{GroupId: gid, TargetId: tid}
+		}
+		if err := tx.Create(&groupTargets).Error; err != nil {
+			log.Error(err)
+			return err
+		}
+	}
+
 	return nil
 }
 

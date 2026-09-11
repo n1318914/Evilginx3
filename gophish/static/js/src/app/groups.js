@@ -3,14 +3,17 @@ var groups = []
 // Save attempts to POST or PUT to /groups/
 function save(id) {
     var targets = []
-    $.each($("#targetsTable").DataTable().rows().data(), function (i, target) {
+    var table = $("#targetsTable").DataTable()
+    var data = table.rows().data()
+    for (var i = 0; i < data.length; i++) {
+        var target = data[i]
         targets.push({
             first_name: unescapeHtml(target[0]),
             last_name: unescapeHtml(target[1]),
             email: unescapeHtml(target[2]),
             position: unescapeHtml(target[3])
         })
-    })
+    }
     var group = {
         name: $("#name").val(),
         targets: targets
@@ -55,6 +58,8 @@ function dismiss() {
 function edit(id) {
     targets = $("#targetsTable").dataTable({
         destroy: true, // Destroy any other instantiated table - http://datatables.net/manual/tech-notes/3#destroy
+        deferRender: true,
+        pageLength: 25,
         columnDefs: [{
             orderable: false,
             targets: "no-sort"
@@ -105,14 +110,73 @@ function edit(id) {
             data.submit();
         },
         done: function (e, data) {
-            $.each(data.result, function (i, record) {
-                addTarget(
-                    record.first_name,
-                    record.last_name,
-                    record.email,
-                    record.position);
+            // Process large imports asynchronously to avoid freezing the UI
+            var records = data.result || [];
+            if (records.length === 0) {
+                targets.DataTable().draw();
+                return;
+            }
+
+            // Disable save button while processing
+            $("#modalSubmit").prop("disabled", true).text("Importing...");
+
+            var targetsTable = targets.DataTable();
+            var existingEmails = new Set();
+            var existingRows = new Map();
+
+            // Build lookup maps from existing data
+            targetsTable.rows().every(function() {
+                var rowData = this.data();
+                if (rowData && rowData[2]) {
+                    var email = rowData[2].toLowerCase();
+                    existingEmails.add(email);
+                    existingRows.set(email, this.index());
+                }
             });
-            targets.DataTable().draw();
+
+            var batchSize = 1000;
+
+            function processBatch(startIdx) {
+                var endIdx = Math.min(startIdx + batchSize, records.length);
+                var newRows = [];
+
+                for (var i = startIdx; i < endIdx; i++) {
+                    var record = records[i];
+                    var email = escapeHtml(record.email).toLowerCase();
+                    var newRow = [
+                        escapeHtml(record.first_name),
+                        escapeHtml(record.last_name),
+                        email,
+                        escapeHtml(record.position),
+                        '<span style="cursor:pointer;"><i class="fa fa-trash-o"></i></span>'
+                    ];
+
+                    if (existingEmails.has(email)) {
+                        var rowIndex = existingRows.get(email);
+                        targetsTable.row(rowIndex).data(newRow);
+                    } else {
+                        newRows.push(newRow);
+                        existingEmails.add(email);
+                    }
+                }
+
+                if (newRows.length > 0) {
+                    targetsTable.rows.add(newRows);
+                }
+
+                if (endIdx < records.length) {
+                    // Yield to the browser event loop for the next batch
+                    setTimeout(function() {
+                        processBatch(endIdx);
+                    }, 0);
+                } else {
+                    // All done - draw once and re-enable save
+                    targetsTable.draw('page');
+                    $("#modalSubmit").prop("disabled", false).text("Save changes");
+                }
+            }
+
+            processBatch(0);
         }
     })
 }
