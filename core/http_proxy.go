@@ -3347,7 +3347,7 @@ func (p *HttpProxy) configureUTLSFingerprinting() error {
 		return err
 	}
 
-	p.Proxy.Tr.DialTLSContext = UTLSDialTLSContext(helloID, p.baseDial())
+	p.Proxy.Tr.DialTLSContext = UTLSDialTLSContext(helloID, true, p.baseDial())
 	log.Info("JA3 fingerprint spoofing enabled: %s", fpName)
 	if p.baseDial() != nil {
 		log.Debug("JA3 fingerprint spoofing: preserving upstream proxy dialer")

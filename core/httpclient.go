@@ -110,11 +110,39 @@ func ParseUserAgentFingerprint(ua string) utls.ClientHelloID {
 	}
 }
 
+// restrictALPNToHTTP11 rewrites the ALPN extension in a built uTLS ClientHello
+// to only advertise "http/1.1". This prevents an upstream server from selecting
+// HTTP/2 when the downstream transport or goproxy MITM path only supports
+// HTTP/1.x. The rest of the browser fingerprint (cipher suites, extensions,
+// etc.) is left untouched.
+func restrictALPNToHTTP11(uConn *utls.UConn) {
+	for _, ext := range uConn.Extensions {
+		if alpn, ok := ext.(*utls.ALPNExtension); ok {
+			alpn.AlpnProtocols = []string{"http/1.1"}
+			break
+		}
+	}
+	// Re-apply the modified extensions and re-marshal the ClientHello so the
+	// on-the-wire ALPN list only contains http/1.1. This avoids triggering
+	// session-binder checks inside BuildHandshakeState while still keeping
+	// config.NextProtos consistent with what is advertised.
+	if err := uConn.ApplyConfig(); err != nil {
+		log.Debug("utls: ApplyConfig failed after ALPN restriction: %v", err)
+		return
+	}
+	if err := uConn.MarshalClientHello(); err != nil {
+		log.Debug("utls: MarshalClientHello failed after ALPN restriction: %v", err)
+	}
+}
+
 // UTLSDialTLSContext returns a DialTLSContext function that performs TLS
 // handshakes using a uTLS browser fingerprint. The optional baseDial is used
 // to establish the underlying TCP connection so that upstream SOCKS5/HTTP
 // proxies continue to work.
-func UTLSDialTLSContext(helloID utls.ClientHelloID, baseDial func(ctx context.Context, network, addr string) (net.Conn, error)) func(ctx context.Context, network, addr string) (net.Conn, error) {
+// When forceHTTP11 is true, the ALPN extension in the ClientHello is rewritten
+// to only advertise "http/1.1". This avoids negotiating HTTP/2 with servers
+// when the consumer of this dialer cannot handle it.
+func UTLSDialTLSContext(helloID utls.ClientHelloID, forceHTTP11 bool, baseDial func(ctx context.Context, network, addr string) (net.Conn, error)) func(ctx context.Context, network, addr string) (net.Conn, error) {
 	if baseDial == nil {
 		baseDial = (&net.Dialer{
 			Timeout:   30 * time.Second,
@@ -153,12 +181,13 @@ func UTLSDialTLSContext(helloID utls.ClientHelloID, baseDial func(ctx context.Co
 		}
 
 		// Browser presets (HelloChrome_Auto, HelloFirefox_Auto, etc.) hardcode
-		// ALPN protocols ["h2", "http/1.1"]. We keep the original ALPN to preserve
-		// the TLS fingerprint as seen by detection systems. The transport's HTTP/2
-		// capability is disabled via ForceAttemptHTTP2=false and TLSNextProto, so
-		// even if h2 is negotiated, the transport will fall back to HTTP/1.1.
-		// This allows the JA3 fingerprint to remain authentic while ensuring
-		// compatibility with goproxy's HTTP/1.x-only design.
+		// ALPN protocols ["h2", "http/1.1"]. If the caller needs an HTTP/1.x-only
+		// transport, restrict the advertised ALPN to "http/1.1" so the server does
+		// not select h2. Without this, Go/goproxy would try to parse an HTTP/2
+		// response as HTTP/1.1 and fail with "malformed HTTP response".
+		if forceHTTP11 {
+			restrictALPNToHTTP11(uConn)
+		}
 
 		if err := uConn.HandshakeContext(ctx); err != nil {
 			log.Debug("utls: handshake with %s failed: %v", addr, err)
@@ -187,8 +216,9 @@ func NewUTLSTransport(helloID utls.ClientHelloID, baseDial func(ctx context.Cont
 		ExpectContinueTimeout: 1 * time.Second,
 		ResponseHeaderTimeout: 30 * time.Second,
 		DialContext:           baseDial,
-		DialTLSContext:        UTLSDialTLSContext(helloID, baseDial),
-		// Disable HTTP/2 to avoid Go's HTTP/2 fingerprint detection
+		DialTLSContext:        UTLSDialTLSContext(helloID, true, baseDial),
+		// Disable HTTP/2: goproxy's MITM path is HTTP/1.x only. The uTLS
+		// dialer also restricts ALPN to http/1.1 so servers don't select h2.
 		ForceAttemptHTTP2: false,
 		TLSNextProto:      make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
 	}
