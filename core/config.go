@@ -552,6 +552,10 @@ func (c *Config) SetProxyPassword(password string) {
 	c.cfg.WriteConfig()
 }
 
+func (c *Config) GetProxyConfig() *ProxyConfig {
+	return c.proxyConfig
+}
+
 func (c *Config) SetGoPhishAdminUrl(k string) {
 	u, err := url.ParseRequestURI(k)
 	if err != nil {

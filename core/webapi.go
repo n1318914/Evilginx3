@@ -525,6 +525,17 @@ func (w *WebAPI) handleConfigFull(rw http.ResponseWriter, req *http.Request) {
 			"api_key":   w.cfg.GetGoPhishApiKey(),
 			"insecure":  w.cfg.GetGoPhishInsecureTLS(),
 		},
+		"proxy": func() map[string]interface{} {
+			pc := w.cfg.GetProxyConfig()
+			return map[string]interface{}{
+				"enabled":  pc.Enabled,
+				"type":     pc.Type,
+				"address":  pc.Address,
+				"port":     pc.Port,
+				"username": pc.Username,
+				"password": pc.Password,
+			}
+		}(),
 		"enabled_sites": enabledSites,
 		"phishlets":     phishlets,
 		"lures":         lures,
@@ -561,6 +572,14 @@ func (w *WebAPI) handleUpdateConfig(rw http.ResponseWriter, req *http.Request) {
 			ApiKey   string `json:"api_key"`
 			Insecure bool   `json:"insecure"`
 		} `json:"gophish"`
+		Proxy *struct {
+			Enabled  bool   `json:"enabled"`
+			Type     string `json:"type"`
+			Address  string `json:"address"`
+			Port     int    `json:"port"`
+			Username string `json:"username"`
+			Password string `json:"password"`
+		} `json:"proxy"`
 	}
 
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
@@ -616,6 +635,26 @@ func (w *WebAPI) handleUpdateConfig(rw http.ResponseWriter, req *http.Request) {
 			w.cfg.SetGoPhishApiKey(payload.Gophish.ApiKey)
 		}
 		w.cfg.SetGoPhishInsecureTLS(payload.Gophish.Insecure)
+	}
+
+	if payload.Proxy != nil {
+		allowedTypes := map[string]bool{"http": true, "https": true, "socks5": true, "socks5h": true}
+		if payload.Proxy.Type != "" && !allowedTypes[payload.Proxy.Type] {
+			writeJSON(rw, http.StatusBadRequest, map[string]string{"error": "invalid proxy type"})
+			return
+		}
+		if payload.Proxy.Type != "" {
+			w.cfg.SetProxyType(payload.Proxy.Type)
+		}
+		if payload.Proxy.Address != "" {
+			w.cfg.SetProxyAddress(payload.Proxy.Address)
+		}
+		if payload.Proxy.Port > 0 {
+			w.cfg.SetProxyPort(payload.Proxy.Port)
+		}
+		w.cfg.SetProxyUsername(payload.Proxy.Username)
+		w.cfg.SetProxyPassword(payload.Proxy.Password)
+		w.cfg.EnableProxy(payload.Proxy.Enabled)
 	}
 
 	user, _ := w.getUserFromRequest(req)
@@ -1145,6 +1184,7 @@ func (w *WebAPI) handleLureUpdate(rw http.ResponseWriter, req *http.Request) {
 
 	var payload struct {
 		Index      int    `json:"index"`
+		Path       string `json:"path"`
 		LandingUrl string `json:"landing_url"`
 	}
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
@@ -1170,6 +1210,12 @@ func (w *WebAPI) handleLureUpdate(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if payload.Path != "" {
+		if !strings.HasPrefix(payload.Path, "/") {
+			payload.Path = "/" + payload.Path
+		}
+		l.Path = payload.Path
+	}
 	l.LandingUrl = payload.LandingUrl
 	if err := w.cfg.SetLure(payload.Index, l); err != nil {
 		writeJSON(rw, http.StatusInternalServerError, map[string]string{"error": "failed to update lure"})
@@ -1182,11 +1228,12 @@ func (w *WebAPI) handleLureUpdate(rw http.ResponseWriter, req *http.Request) {
 		username = user.Username
 	}
 	clientIP := getClientIP(req)
-	w.db.CreateAuditEntry(username, "update_lure", fmt.Sprintf("Updated landing_url for lure at index %d", payload.Index), clientIP)
+	w.db.CreateAuditEntry(username, "update_lure", fmt.Sprintf("Updated lure at index %d", payload.Index), clientIP)
 
 	writeJSON(rw, http.StatusOK, map[string]interface{}{
 		"message":     "Lure updated",
 		"index":       payload.Index,
+		"path":        l.Path,
 		"landing_url": l.LandingUrl,
 	})
 }

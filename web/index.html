@@ -880,14 +880,17 @@ body.dark .terminal-wrap {
 <!-- ==================== EDIT LURE MODAL ==================== -->
 <div id="modalEditLure" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;align-items:center;justify-content:center;">
   <div style="background:#1e1e2e;border-radius:10px;padding:28px 32px;width:520px;max-width:96vw;box-shadow:0 8px 40px rgba(0,0,0,0.5);">
-    <h3 style="margin:0 0 6px;color:#e0e0f0;font-size:17px;"><i class="ri-edit-line"></i> Edit Landing URL</h3>
+    <h3 style="margin:0 0 6px;color:#e0e0f0;font-size:17px;"><i class="ri-edit-line"></i> Edit Lure</h3>
     <p id="editLureSubtitle" style="margin:0 0 18px;color:#888;font-size:13px;"></p>
+    <label style="display:block;margin-bottom:6px;color:#aaa;font-size:13px;">Path</label>
+    <input id="editLurePath" type="text" placeholder="e.g. /login"
+      style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:6px;border:1px solid #444;background:#12121c;color:#e0e0f0;font-size:13px;margin-bottom:14px;">
     <label style="display:block;margin-bottom:6px;color:#aaa;font-size:13px;">Landing URL / Path</label>
     <input id="editLureLandingUrl" type="text" placeholder="e.g. /custom/login or https://www.example.com/login"
       style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:6px;border:1px solid #444;background:#12121c;color:#e0e0f0;font-size:13px;margin-bottom:20px;">
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button onclick="closeEditLureModal()" style="padding:8px 18px;border-radius:6px;border:1px solid #555;background:transparent;color:#aaa;cursor:pointer;font-size:13px;">Cancel</button>
-      <button onclick="submitEditLureLandingUrl()" class="btn-create" style="padding:8px 22px;font-size:13px;"><i class="ri-save-line"></i> Save</button>
+      <button onclick="submitEditLure()" class="btn-create" style="padding:8px 22px;font-size:13px;"><i class="ri-save-line"></i> Save</button>
     </div>
   </div>
 </div>
@@ -995,6 +998,44 @@ body.dark .terminal-wrap {
         </select>
       </div>
       <button class="btn-save" onclick="saveConfigSection('gophish')">Save GoPhish</button>
+    </div>
+
+    <!-- Proxy -->
+    <div class="config-section">
+      <h3><i class="ri-route-line"></i> Proxy</h3>
+      <div class="config-row">
+        <label>Enabled</label>
+        <select id="cfgProxyEnabled">
+          <option value="false">Disabled</option>
+          <option value="true">Enabled</option>
+        </select>
+      </div>
+      <div class="config-row">
+        <label>Type</label>
+        <select id="cfgProxyType">
+          <option value="http">http</option>
+          <option value="https">https</option>
+          <option value="socks5">socks5</option>
+          <option value="socks5h">socks5h</option>
+        </select>
+      </div>
+      <div class="config-row">
+        <label>Address</label>
+        <input type="text" id="cfgProxyAddress" placeholder="127.0.0.1">
+      </div>
+      <div class="config-row">
+        <label>Port</label>
+        <input type="number" id="cfgProxyPort" placeholder="8080">
+      </div>
+      <div class="config-row">
+        <label>Username</label>
+        <input type="text" id="cfgProxyUsername" placeholder="optional">
+      </div>
+      <div class="config-row">
+        <label>Password</label>
+        <input type="password" id="cfgProxyPassword" placeholder="optional">
+      </div>
+      <button class="btn-save" onclick="saveConfigSection('proxy')">Save Proxy</button>
     </div>
 </div>
 
@@ -1917,7 +1958,7 @@ function loadLures() {
         '<td>' + escapeHtml(lure.landing_url || '-') + '</td>' +
         '<td>' +
           '<button onclick="getLureUrl(' + lureIndex + ')">Get URL</button>' +
-          '<button onclick="openEditLureModal(' + lureIndex + ', \'' + escapeJsString(lure.landing_url || '') + '\')">Edit</button>' +
+          '<button onclick="openEditLureModal(' + lureIndex + ', \'' + escapeJsString(lure.path || '') + '\', \'' + escapeJsString(lure.landing_url || '') + '\')">Edit</button>' +
           '<button class="btn-danger" onclick="deleteLure(' + lureIndex + ')">Delete</button>' +
         '</td>';
       tbody.appendChild(tr);
@@ -1972,7 +2013,7 @@ function appendLureRow(lure) {
     '<td>' + escapeHtml(lure.landing_url || '-') + '</td>' +
     '<td>' +
       '<button onclick="getLureUrl(' + lureIndex + ')">Get URL</button>' +
-      '<button onclick="openEditLureModal(' + lureIndex + ', \'' + escapeJsString(lure.landing_url || '') + '\')">Edit</button>' +
+      '<button onclick="openEditLureModal(' + lureIndex + ', \'' + escapeJsString(lure.path || '') + '\', \'' + escapeJsString(lure.landing_url || '') + '\')">Edit</button>' +
       '<button class="btn-danger" onclick="deleteLure(' + lureIndex + ')">Delete</button>' +
     '</td>';
   tbody.appendChild(tr);
@@ -2014,13 +2055,14 @@ function getLureUrl(id) {
 
 var _editLureIndex = -1;
 
-function openEditLureModal(index, currentLandingUrl) {
+function openEditLureModal(index, currentPath, currentLandingUrl) {
   _editLureIndex = index;
   document.getElementById('editLureSubtitle').textContent = 'Lure #' + index;
+  document.getElementById('editLurePath').value = currentPath || '';
   document.getElementById('editLureLandingUrl').value = currentLandingUrl || '';
   var modal = document.getElementById('modalEditLure');
   modal.style.display = 'flex';
-  setTimeout(function() { document.getElementById('editLureLandingUrl').focus(); }, 50);
+  setTimeout(function() { document.getElementById('editLurePath').focus(); }, 50);
 }
 
 function closeEditLureModal() {
@@ -2028,26 +2070,31 @@ function closeEditLureModal() {
   _editLureIndex = -1;
 }
 
-function submitEditLureLandingUrl() {
+function submitEditLure() {
+  var path = document.getElementById('editLurePath').value.trim();
   var landingUrl = document.getElementById('editLureLandingUrl').value.trim();
   if (_editLureIndex < 0) return;
+  if (path === '') {
+    showNotify('Path is required.', 'error');
+    return;
+  }
   apiFetch('/api/lures/update', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ index: _editLureIndex, landing_url: landingUrl })
+    body: JSON.stringify({ index: _editLureIndex, path: path, landing_url: landingUrl })
   }).then(function(r) {
     if (!r) return;
     return r.json().then(function(body) {
       if (r.ok) {
-        showNotify('Landing URL updated for lure #' + _editLureIndex, 'success');
+        showNotify('Lure #' + _editLureIndex + ' updated', 'success');
         closeEditLureModal();
         loadLures();
       } else {
-        showNotify(body.error || 'Failed to update landing URL.', 'error');
+        showNotify(body.error || 'Failed to update lure.', 'error');
       }
     });
   }).catch(function() {
-    showNotify('Failed to update landing URL.', 'error');
+    showNotify('Failed to update lure.', 'error');
   });
 }
 
@@ -2055,8 +2102,12 @@ document.getElementById('modalEditLure').addEventListener('click', function(e) {
   if (e.target === this) closeEditLureModal();
 });
 
+document.getElementById('editLurePath').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') submitEditLure();
+});
+
 document.getElementById('editLureLandingUrl').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') submitEditLureLandingUrl();
+  if (e.key === 'Enter') submitEditLure();
 });
 
 // ============================================================
@@ -2126,6 +2177,14 @@ function loadConfig() {
     setValue('cfgGpAdminURL', gp.admin_url || '');
     setValue('cfgGpAPIKey', gp.api_key || '');
     setSelectValue('cfgGpInsecure', gp.insecure !== undefined ? String(gp.insecure) : 'false');
+
+    var px = data.proxy || {};
+    setSelectValue('cfgProxyEnabled', px.enabled !== undefined ? String(px.enabled) : 'false');
+    setSelectValue('cfgProxyType', px.type || 'http');
+    setValue('cfgProxyAddress', px.address || '');
+    setValue('cfgProxyPort', px.port || '');
+    setValue('cfgProxyUsername', px.username || '');
+    setValue('cfgProxyPassword', px.password || '');
   }).catch(function(err) {
     console.error('Failed to load config:', err);
     showNotify('Failed to load configuration.', 'error');
@@ -2168,6 +2227,15 @@ function saveConfigSection(section) {
       admin_url: document.getElementById('cfgGpAdminURL').value,
       api_key: document.getElementById('cfgGpAPIKey').value,
       insecure: document.getElementById('cfgGpInsecure').value === 'true'
+    };
+  } else if (section === 'proxy') {
+    payload.proxy = {
+      enabled: document.getElementById('cfgProxyEnabled').value === 'true',
+      type: document.getElementById('cfgProxyType').value,
+      address: document.getElementById('cfgProxyAddress').value,
+      port: parseInt(document.getElementById('cfgProxyPort').value) || 0,
+      username: document.getElementById('cfgProxyUsername').value,
+      password: document.getElementById('cfgProxyPassword').value
     };
   }
 
