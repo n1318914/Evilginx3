@@ -42,7 +42,7 @@ type TelegramMessage struct {
 func NewTelegramBot() *TelegramBot {
 	return &TelegramBot{
 		client:   NewHTTPClient(10 * time.Second),
-		msgQueue: make(chan *TelegramMessage, 100),
+		msgQueue: make(chan *TelegramMessage, 1000),
 		stopChan: make(chan struct{}),
 	}
 }
@@ -400,10 +400,10 @@ type InlineButton struct {
 }
 
 type telegramMessageWithButtons struct {
-	ChatID      string              `json:"chat_id"`
-	Text        string              `json:"text"`
-	ParseMode   string              `json:"parse_mode,omitempty"`
-	ReplyMarkup *telegramInlineKbd  `json:"reply_markup,omitempty"`
+	ChatID      string             `json:"chat_id"`
+	Text        string             `json:"text"`
+	ParseMode   string             `json:"parse_mode,omitempty"`
+	ReplyMarkup *telegramInlineKbd `json:"reply_markup,omitempty"`
 }
 
 type telegramInlineKbd struct {
@@ -427,13 +427,13 @@ type telegramAPIResponse struct {
 }
 
 type telegramUpdateResponse struct {
-	OK     bool `json:"ok"`
+	OK     bool             `json:"ok"`
 	Result []telegramUpdate `json:"result"`
 }
 
 type telegramUpdate struct {
-	UpdateID        int              `json:"update_id"`
-	CallbackQuery   *telegramCallback `json:"callback_query,omitempty"`
+	UpdateID      int               `json:"update_id"`
+	CallbackQuery *telegramCallback `json:"callback_query,omitempty"`
 }
 
 type telegramCallback struct {
@@ -520,6 +520,79 @@ func (t *TelegramBot) EditMessage(chatID string, msgID int, text string, buttons
 	}
 
 	jsonData, err := json.Marshal(editMsg)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := t.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("telegram API returned status code: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// PinChatMessage pins a message in the chat without sending a notification.
+func (t *TelegramBot) PinChatMessage(chatID string, msgID int) error {
+	if !t.IsConfigured() {
+		return fmt.Errorf("telegram bot not configured")
+	}
+
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/pinChatMessage", t.botToken)
+
+	payload := map[string]interface{}{
+		"chat_id":              chatID,
+		"message_id":           msgID,
+		"disable_notification": true,
+	}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := t.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("telegram API returned status code: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// DeleteMessage deletes a message from the chat.
+func (t *TelegramBot) DeleteMessage(chatID string, msgID int) error {
+	if !t.IsConfigured() {
+		return fmt.Errorf("telegram bot not configured")
+	}
+
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/deleteMessage", t.botToken)
+
+	payload := map[string]interface{}{
+		"chat_id":    chatID,
+		"message_id": msgID,
+	}
+	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
