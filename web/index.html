@@ -927,7 +927,7 @@ body.dark .terminal-wrap {
         <option value="socks5">socks5</option>
         <option value="socks5h">socks5h</option>
       </select>
-      <input id="lureProxyAddress" type="text" placeholder="host" style="flex:2;min-width:120px;padding:8px 10px;border-radius:6px;border:1px solid #444;background:#12121c;color:#e0e0f0;font-size:13px;">
+      <input id="lureProxyAddress" type="text" placeholder="host" onpaste="handleProxyAddressPaste(this, event, 'lure')" style="flex:2;min-width:120px;padding:8px 10px;border-radius:6px;border:1px solid #444;background:#12121c;color:#e0e0f0;font-size:13px;">
       <input id="lureProxyPort" type="number" placeholder="port" style="flex:1;min-width:80px;padding:8px 10px;border-radius:6px;border:1px solid #444;background:#12121c;color:#e0e0f0;font-size:13px;">
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;">
@@ -1071,7 +1071,7 @@ body.dark .terminal-wrap {
       </div>
       <div class="config-row">
         <label>Address</label>
-        <input type="text" id="cfgProxyAddress" placeholder="127.0.0.1">
+        <input type="text" id="cfgProxyAddress" placeholder="127.0.0.1" onpaste="handleProxyAddressPaste(this, event, 'config')">
       </div>
       <div class="config-row">
         <label>Port</label>
@@ -2432,6 +2432,53 @@ function setValue(id, val) {
 function setSelectValue(id, val) {
   var el = document.getElementById(id);
   if (el) el.value = val;
+}
+
+function parseProxyString(raw) {
+  var s = (raw || '').trim();
+  if (!s) return null;
+
+  var type = '';
+  var typeMatch = s.match(/^(https?|socks5h?):\/\//i);
+  if (typeMatch) {
+    type = typeMatch[1].toLowerCase();
+    s = s.substring(typeMatch[0].length);
+  }
+
+  var parts = s.split(':');
+  if (parts.length < 2) return null;
+
+  var port = parseInt(parts[1], 10);
+  if (!port || port <= 0 || port > 65535) return null;
+
+  var username = '';
+  var password = '';
+  if (parts.length >= 3) {
+    username = parts[2];
+    if (parts.length >= 4) {
+      password = parts.slice(3).join(':');
+    }
+  }
+
+  return { type: type, address: parts[0], port: port, username: username, password: password };
+}
+
+function applyParsedProxy(parsed, context) {
+  var idPrefix = context === 'lure' ? 'lureProxy' : 'cfgProxy';
+  if (parsed.type) setSelectValue(idPrefix + 'Type', parsed.type);
+  setValue(idPrefix + 'Address', parsed.address);
+  setValue(idPrefix + 'Port', parsed.port);
+  setValue(idPrefix + 'Username', parsed.username);
+  setValue(idPrefix + 'Password', parsed.password);
+}
+
+function handleProxyAddressPaste(el, e, context) {
+  var pasted = (e.clipboardData || window.clipboardData).getData('text');
+  var parsed = parseProxyString(pasted);
+  if (!parsed) return; // let browser paste normally
+  e.preventDefault();
+  applyParsedProxy(parsed, context);
+  showNotify('Proxy fields auto-filled from pasted address.', 'success');
 }
 
 function saveConfigSection(section) {
