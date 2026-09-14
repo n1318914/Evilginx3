@@ -867,11 +867,12 @@ body.dark .terminal-wrap {
             <th>Hostname</th>
             <th>Redirect URL</th>
             <th>Landing URL</th>
+            <th>Proxy Pool</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody id="luresTableBody">
-          <tr><td colspan="7" style="text-align:center;color:#999;">Loading...</td></tr>
+          <tr><td colspan="8" style="text-align:center;color:#999;">Loading...</td></tr>
         </tbody>
       </table>
     </div>
@@ -891,6 +892,55 @@ body.dark .terminal-wrap {
     <div style="display:flex;gap:10px;justify-content:flex-end;">
       <button onclick="closeEditLureModal()" style="padding:8px 18px;border-radius:6px;border:1px solid #555;background:transparent;color:#aaa;cursor:pointer;font-size:13px;">Cancel</button>
       <button onclick="submitEditLure()" class="btn-create" style="padding:8px 22px;font-size:13px;"><i class="ri-save-line"></i> Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== LURE PROXY POOL MODAL ==================== -->
+<div id="modalLureProxyPool" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:#1e1e2e;border-radius:10px;padding:28px 32px;width:620px;max-width:96vw;box-shadow:0 8px 40px rgba(0,0,0,0.5);max-height:90vh;overflow:auto;">
+    <h3 style="margin:0 0 6px;color:#e0e0f0;font-size:17px;"><i class="ri-route-line"></i> Proxy Pool</h3>
+    <p id="lureProxyPoolSubtitle" style="margin:0 0 18px;color:#888;font-size:13px;"></p>
+
+    <table class="section-table" style="margin-bottom:18px;" id="lureProxyPoolTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Type</th>
+          <th>Address</th>
+          <th>Port</th>
+          <th>User</th>
+          <th>Enabled</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="lureProxyPoolTableBody">
+        <tr><td colspan="7" style="text-align:center;color:#999;">No proxies</td></tr>
+      </tbody>
+    </table>
+
+    <h4 style="margin:0 0 10px;color:#e0e0f0;font-size:14px;">Add Proxy</h4>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+      <select id="lureProxyType" style="flex:1;min-width:90px;padding:8px 10px;border-radius:6px;border:1px solid #444;background:#12121c;color:#e0e0f0;font-size:13px;">
+        <option value="http">http</option>
+        <option value="https">https</option>
+        <option value="socks5">socks5</option>
+        <option value="socks5h">socks5h</option>
+      </select>
+      <input id="lureProxyAddress" type="text" placeholder="host" style="flex:2;min-width:120px;padding:8px 10px;border-radius:6px;border:1px solid #444;background:#12121c;color:#e0e0f0;font-size:13px;">
+      <input id="lureProxyPort" type="number" placeholder="port" style="flex:1;min-width:80px;padding:8px 10px;border-radius:6px;border:1px solid #444;background:#12121c;color:#e0e0f0;font-size:13px;">
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;">
+      <input id="lureProxyUsername" type="text" placeholder="username (optional)" style="flex:1;min-width:120px;padding:8px 10px;border-radius:6px;border:1px solid #444;background:#12121c;color:#e0e0f0;font-size:13px;">
+      <input id="lureProxyPassword" type="password" placeholder="password (optional)" style="flex:1;min-width:120px;padding:8px 10px;border-radius:6px;border:1px solid #444;background:#12121c;color:#e0e0f0;font-size:13px;">
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:space-between;">
+      <button onclick="clearLureProxyPool()" class="btn-danger" style="padding:8px 18px;font-size:13px;"><i class="ri-delete-bin-line"></i> Clear All</button>
+      <div style="display:flex;gap:10px;">
+        <button onclick="closeLureProxyPoolModal()" style="padding:8px 18px;border-radius:6px;border:1px solid #555;background:transparent;color:#aaa;cursor:pointer;font-size:13px;">Close</button>
+        <button onclick="addLureProxy()" class="btn-create" style="padding:8px 22px;font-size:13px;"><i class="ri-add-line"></i> Add</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1935,19 +1985,23 @@ document.getElementById('modalCreatePhishlet').addEventListener('click', functio
 // ============================================================
 // Lures Section
 // ============================================================
+var _luresData = [];
+
 function loadLures() {
   apiFetch('/api/lures').then(function(r) {
     if (!r) return;
     return r.json();
   }).then(function(data) {
+    _luresData = data || [];
     var tbody = document.getElementById('luresTableBody');
     if (!data || !Array.isArray(data) || data.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;">No lures found</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">No lures found</td></tr>';
       return;
     }
     tbody.innerHTML = '';
     data.forEach(function(lure, idx) {
       var lureIndex = (lure.index !== undefined) ? lure.index : idx;
+      var proxyCount = (lure.proxy_pool && Array.isArray(lure.proxy_pool)) ? lure.proxy_pool.length : 0;
       var tr = document.createElement('tr');
       tr.innerHTML =
         '<td>' + lureIndex + '</td>' +
@@ -1956,6 +2010,7 @@ function loadLures() {
         '<td>' + escapeHtml(lure.hostname || '-') + '</td>' +
         '<td>' + escapeHtml(lure.redirect_url || '-') + '</td>' +
         '<td>' + escapeHtml(lure.landing_url || '-') + '</td>' +
+        '<td>' + proxyCount + ' proxy(s) <button onclick="openLureProxyPoolModal(' + lureIndex + ')">Manage</button></td>' +
         '<td>' +
           '<button onclick="getLureUrl(' + lureIndex + ')">Get URL</button>' +
           '<button onclick="openEditLureModal(' + lureIndex + ', \'' + escapeJsString(lure.path || '') + '\', \'' + escapeJsString(lure.landing_url || '') + '\')">Edit</button>' +
@@ -1966,7 +2021,7 @@ function loadLures() {
   }).catch(function(err) {
     console.error('Failed to load lures:', err);
     document.getElementById('luresTableBody').innerHTML =
-      '<tr><td colspan="7" style="text-align:center;color:#f66;">Failed to load lures</td></tr>';
+      '<tr><td colspan="8" style="text-align:center;color:#f66;">Failed to load lures</td></tr>';
   });
 }
 
@@ -2003,6 +2058,7 @@ function appendLureRow(lure) {
   // Clear the "No lures found" placeholder if present
   if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
   var lureIndex = (lure.index !== undefined) ? lure.index : 0;
+  var proxyCount = (lure.proxy_pool && Array.isArray(lure.proxy_pool)) ? lure.proxy_pool.length : 0;
   var tr = document.createElement('tr');
   tr.innerHTML =
     '<td>' + lureIndex + '</td>' +
@@ -2011,6 +2067,7 @@ function appendLureRow(lure) {
     '<td>' + escapeHtml(lure.hostname || '-') + '</td>' +
     '<td>' + escapeHtml(lure.redirect_url || '-') + '</td>' +
     '<td>' + escapeHtml(lure.landing_url || '-') + '</td>' +
+    '<td>' + proxyCount + ' proxy(s) <button onclick="openLureProxyPoolModal(' + lureIndex + ')">Manage</button></td>' +
     '<td>' +
       '<button onclick="getLureUrl(' + lureIndex + ')">Get URL</button>' +
       '<button onclick="openEditLureModal(' + lureIndex + ', \'' + escapeJsString(lure.path || '') + '\', \'' + escapeJsString(lure.landing_url || '') + '\')">Edit</button>' +
@@ -2108,6 +2165,183 @@ document.getElementById('editLurePath').addEventListener('keydown', function(e) 
 
 document.getElementById('editLureLandingUrl').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') submitEditLure();
+});
+
+// ============================================================
+// Lure Proxy Pool
+// ============================================================
+var _lureProxyPoolIndex = -1;
+
+function openLureProxyPoolModal(lureIndex) {
+  _lureProxyPoolIndex = lureIndex;
+  document.getElementById('lureProxyPoolSubtitle').textContent = 'Lure #' + lureIndex;
+  renderLureProxyPoolModal();
+  document.getElementById('modalLureProxyPool').style.display = 'flex';
+}
+
+function closeLureProxyPoolModal() {
+  document.getElementById('modalLureProxyPool').style.display = 'none';
+  _lureProxyPoolIndex = -1;
+}
+
+function renderLureProxyPoolModal() {
+  var tbody = document.getElementById('lureProxyPoolTableBody');
+  var lure = null;
+  for (var i = 0; i < _luresData.length; i++) {
+    if ((_luresData[i].index !== undefined ? _luresData[i].index : i) === _lureProxyPoolIndex) {
+      lure = _luresData[i];
+      break;
+    }
+  }
+  var pool = (lure && Array.isArray(lure.proxy_pool)) ? lure.proxy_pool : [];
+  if (pool.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;">No proxies</td></tr>';
+    return;
+  }
+  tbody.innerHTML = '';
+  pool.forEach(function(pc, idx) {
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + idx + '</td>' +
+      '<td>' + escapeHtml(pc.type || '') + '</td>' +
+      '<td>' + escapeHtml(pc.address || '') + '</td>' +
+      '<td>' + (pc.port || '') + '</td>' +
+      '<td>' + escapeHtml(pc.username || '-') + '</td>' +
+      '<td><input type="checkbox" ' + (pc.enabled ? 'checked' : '') + ' onchange="toggleLureProxy(' + idx + ', this.checked)"></td>' +
+      '<td><button class="btn-danger" onclick="removeLureProxy(' + idx + ')">Delete</button></td>';
+    tbody.appendChild(tr);
+  });
+}
+
+function addLureProxy() {
+  if (_lureProxyPoolIndex < 0) return;
+  var type = document.getElementById('lureProxyType').value;
+  var address = document.getElementById('lureProxyAddress').value.trim();
+  var port = parseInt(document.getElementById('lureProxyPort').value);
+  var username = document.getElementById('lureProxyUsername').value.trim();
+  var password = document.getElementById('lureProxyPassword').value;
+  if (!address) { showNotify('Proxy address is required.', 'error'); return; }
+  if (!port || port <= 0 || port > 65535) { showNotify('Invalid proxy port.', 'error'); return; }
+
+  apiFetch('/api/lures/proxy_pool', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index: _lureProxyPoolIndex, action: 'add', type: type, address: address, port: port, username: username, password: password })
+  }).then(function(r) {
+    if (!r) return;
+    return r.json().then(function(body) {
+      if (r.ok) {
+        showNotify('Proxy added to lure #' + _lureProxyPoolIndex, 'success');
+        document.getElementById('lureProxyAddress').value = '';
+        document.getElementById('lureProxyPort').value = '';
+        document.getElementById('lureProxyUsername').value = '';
+        document.getElementById('lureProxyPassword').value = '';
+        // update cached data and re-render
+        for (var i = 0; i < _luresData.length; i++) {
+          if ((_luresData[i].index !== undefined ? _luresData[i].index : i) === _lureProxyPoolIndex) {
+            _luresData[i].proxy_pool = body.proxy_pool;
+            break;
+          }
+        }
+        renderLureProxyPoolModal();
+        loadLures();
+      } else {
+        showNotify(body.error || 'Failed to add proxy.', 'error');
+      }
+    });
+  }).catch(function() {
+    showNotify('Failed to add proxy.', 'error');
+  });
+}
+
+function removeLureProxy(proxyIndex) {
+  if (_lureProxyPoolIndex < 0) return;
+  apiFetch('/api/lures/proxy_pool', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index: _lureProxyPoolIndex, action: 'remove', proxy_index: proxyIndex })
+  }).then(function(r) {
+    if (!r) return;
+    return r.json().then(function(body) {
+      if (r.ok) {
+        for (var i = 0; i < _luresData.length; i++) {
+          if ((_luresData[i].index !== undefined ? _luresData[i].index : i) === _lureProxyPoolIndex) {
+            _luresData[i].proxy_pool = body.proxy_pool;
+            break;
+          }
+        }
+        renderLureProxyPoolModal();
+        loadLures();
+      } else {
+        showNotify(body.error || 'Failed to remove proxy.', 'error');
+      }
+    });
+  }).catch(function() {
+    showNotify('Failed to remove proxy.', 'error');
+  });
+}
+
+function toggleLureProxy(proxyIndex, enabled) {
+  if (_lureProxyPoolIndex < 0) return;
+  apiFetch('/api/lures/proxy_pool', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index: _lureProxyPoolIndex, action: 'toggle', proxy_index: proxyIndex, enabled: enabled })
+  }).then(function(r) {
+    if (!r) return;
+    return r.json().then(function(body) {
+      if (r.ok) {
+        for (var i = 0; i < _luresData.length; i++) {
+          if ((_luresData[i].index !== undefined ? _luresData[i].index : i) === _lureProxyPoolIndex) {
+            _luresData[i].proxy_pool = body.proxy_pool;
+            break;
+          }
+        }
+        renderLureProxyPoolModal();
+        loadLures();
+      } else {
+        showNotify(body.error || 'Failed to toggle proxy.', 'error');
+      }
+    });
+  }).catch(function() {
+    showNotify('Failed to toggle proxy.', 'error');
+  });
+}
+
+function clearLureProxyPool() {
+  if (_lureProxyPoolIndex < 0) return;
+  if (!confirm('Clear all proxies for lure #' + _lureProxyPoolIndex + '?')) return;
+  apiFetch('/api/lures/proxy_pool', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index: _lureProxyPoolIndex, action: 'clear' })
+  }).then(function(r) {
+    if (!r) return;
+    return r.json().then(function(body) {
+      if (r.ok) {
+        for (var i = 0; i < _luresData.length; i++) {
+          if ((_luresData[i].index !== undefined ? _luresData[i].index : i) === _lureProxyPoolIndex) {
+            _luresData[i].proxy_pool = body.proxy_pool;
+            break;
+          }
+        }
+        renderLureProxyPoolModal();
+        loadLures();
+      } else {
+        showNotify(body.error || 'Failed to clear proxy pool.', 'error');
+      }
+    });
+  }).catch(function() {
+    showNotify('Failed to clear proxy pool.', 'error');
+  });
+}
+
+document.getElementById('modalLureProxyPool').addEventListener('click', function(e) {
+  if (e.target === this) closeLureProxyPoolModal();
+});
+
+document.getElementById('lureProxyPort').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') addLureProxy();
 });
 
 // ============================================================

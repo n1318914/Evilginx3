@@ -115,6 +115,7 @@ func (w *WebAPI) Start(port int) {
 	mux.HandleFunc("/api/lures/get-url", w.requireAuth(w.handleLureGetUrl))
 	mux.HandleFunc("/api/lures/create", w.requireOperator(w.handleLureCreate))
 	mux.HandleFunc("/api/lures/update", w.requireOperator(w.handleLureUpdate))
+	mux.HandleFunc("/api/lures/proxy_pool", w.requireOperator(w.handleLureProxyPool))
 	mux.HandleFunc("/api/lures/delete", w.requireOperator(w.handleLureDelete))
 
 	// GoPhish endpoints (read-only)
@@ -497,6 +498,7 @@ func (w *WebAPI) handleConfigFull(rw http.ResponseWriter, req *http.Request) {
 				"landing_url":     l.LandingUrl,
 				"redirector":      l.Redirector,
 				"post_redirector": l.PostRedirector,
+				"proxy_pool":      l.ProxyPool,
 				"info":            l.Info,
 			})
 		}
@@ -1002,6 +1004,7 @@ func (w *WebAPI) handleLures(rw http.ResponseWriter, req *http.Request) {
 				"landing_url":     l.LandingUrl,
 				"redirector":      l.Redirector,
 				"post_redirector": l.PostRedirector,
+				"proxy_pool":      l.ProxyPool,
 				"ua_filter":       l.UserAgentFilter,
 				"info":            l.Info,
 				"og_title":        l.OgTitle,
@@ -1235,6 +1238,99 @@ func (w *WebAPI) handleLureUpdate(rw http.ResponseWriter, req *http.Request) {
 		"index":       payload.Index,
 		"path":        l.Path,
 		"landing_url": l.LandingUrl,
+	})
+}
+
+func (w *WebAPI) handleLureProxyPool(rw http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		http.Error(rw, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload struct {
+		Index      int    `json:"index"`
+		Action     string `json:"action"`
+		ProxyIndex int    `json:"proxy_index"`
+		Type       string `json:"type"`
+		Address    string `json:"address"`
+		Port       int    `json:"port"`
+		Username   string `json:"username"`
+		Password   string `json:"password"`
+		Enabled    bool   `json:"enabled"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeJSON(rw, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	l, err := w.cfg.GetLure(payload.Index)
+	if err != nil {
+		writeJSON(rw, http.StatusNotFound, map[string]string{"error": "lure not found"})
+		return
+	}
+
+	allowedTypes := map[string]bool{"http": true, "https": true, "socks5": true, "socks5h": true}
+
+	switch payload.Action {
+	case "add":
+		ptype := strings.ToLower(payload.Type)
+		if !allowedTypes[ptype] {
+			writeJSON(rw, http.StatusBadRequest, map[string]string{"error": "invalid proxy type"})
+			return
+		}
+		if strings.TrimSpace(payload.Address) == "" {
+			writeJSON(rw, http.StatusBadRequest, map[string]string{"error": "proxy address is required"})
+			return
+		}
+		if payload.Port <= 0 || payload.Port > 65535 {
+			writeJSON(rw, http.StatusBadRequest, map[string]string{"error": "invalid proxy port"})
+			return
+		}
+		pc := &ProxyConfig{
+			Type:     ptype,
+			Address:  strings.TrimSpace(payload.Address),
+			Port:     payload.Port,
+			Username: payload.Username,
+			Password: payload.Password,
+			Enabled:  true,
+		}
+		l.ProxyPool = append(l.ProxyPool, pc)
+	case "remove":
+		if payload.ProxyIndex < 0 || payload.ProxyIndex >= len(l.ProxyPool) {
+			writeJSON(rw, http.StatusBadRequest, map[string]string{"error": "proxy index out of bounds"})
+			return
+		}
+		l.ProxyPool = append(l.ProxyPool[:payload.ProxyIndex], l.ProxyPool[payload.ProxyIndex+1:]...)
+	case "toggle":
+		if payload.ProxyIndex < 0 || payload.ProxyIndex >= len(l.ProxyPool) {
+			writeJSON(rw, http.StatusBadRequest, map[string]string{"error": "proxy index out of bounds"})
+			return
+		}
+		l.ProxyPool[payload.ProxyIndex].Enabled = payload.Enabled
+	case "clear":
+		l.ProxyPool = nil
+	default:
+		writeJSON(rw, http.StatusBadRequest, map[string]string{"error": "invalid action"})
+		return
+	}
+
+	if err := w.cfg.SetLure(payload.Index, l); err != nil {
+		writeJSON(rw, http.StatusInternalServerError, map[string]string{"error": "failed to update lure proxy pool"})
+		return
+	}
+
+	user, _ := w.getUserFromRequest(req)
+	username := "unknown"
+	if user != nil {
+		username = user.Username
+	}
+	clientIP := getClientIP(req)
+	w.db.CreateAuditEntry(username, "update_lure_proxy_pool", fmt.Sprintf("Updated proxy pool for lure at index %d", payload.Index), clientIP)
+
+	writeJSON(rw, http.StatusOK, map[string]interface{}{
+		"message":    "Lure proxy pool updated",
+		"index":      payload.Index,
+		"proxy_pool": l.ProxyPool,
 	})
 }
 
