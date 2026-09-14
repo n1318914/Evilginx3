@@ -1273,6 +1273,7 @@ function navigateTo(section) {
   } else if (section === 'phishlets') {
     loadPhishlets();
   } else if (section === 'lures') {
+    loadPhishlets(); // ensure create-lure dropdown is populated
     loadLures();
   } else if (section === 'campaigns') {
     loadCampaigns();
