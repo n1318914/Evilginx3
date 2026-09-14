@@ -937,12 +937,13 @@ body.dark .terminal-wrap {
           <th>Address</th>
           <th>Port</th>
           <th>User</th>
+          <th>Password</th>
           <th>Enabled</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody id="lureProxyPoolTableBody">
-        <tr><td colspan="7" style="text-align:center;color:#999;">No proxies</td></tr>
+        <tr><td colspan="8" style="text-align:center;color:#999;">No proxies</td></tr>
       </tbody>
     </table>
 
@@ -2223,7 +2224,7 @@ function renderLureProxyPoolModal() {
   }
   var pool = (lure && Array.isArray(lure.proxy_pool)) ? lure.proxy_pool : [];
   if (pool.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;">No proxies</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">No proxies</td></tr>';
     return;
   }
   tbody.innerHTML = '';
@@ -2235,6 +2236,7 @@ function renderLureProxyPoolModal() {
       '<td>' + escapeHtml(pc.address || '') + '</td>' +
       '<td>' + (pc.port || '') + '</td>' +
       '<td>' + escapeHtml(pc.username || '-') + '</td>' +
+      '<td>' + escapeHtml(pc.password || '-') + '</td>' +
       '<td><input type="checkbox" ' + (pc.enabled ? 'checked' : '') + ' onchange="toggleLureProxy(' + idx + ', this.checked)"></td>' +
       '<td><button class="btn-danger" onclick="removeLureProxy(' + idx + ')">Delete</button></td>';
     tbody.appendChild(tr);

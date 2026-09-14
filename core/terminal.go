@@ -3921,7 +3921,7 @@ func (t *Terminal) sprintLureProxyPool(l *Lure) string {
 		return "no proxies configured for this lure\n"
 	}
 
-	cols := []string{"idx", "type", "address", "port", "username", "enabled"}
+	cols := []string{"idx", "type", "address", "port", "username", "password", "enabled"}
 	var rows [][]string
 	for i, pc := range l.ProxyPool {
 		enabled := red.Sprint("no")
@@ -3932,12 +3932,17 @@ func (t *Terminal) sprintLureProxyPool(l *Lure) string {
 		if pc.Username != "" {
 			username = pc.Username
 		}
+		password := "-"
+		if pc.Password != "" {
+			password = pc.Password
+		}
 		rows = append(rows, []string{
 			strconv.Itoa(i),
 			hiblue.Sprint(pc.Type),
 			white.Sprint(pc.Address),
 			strconv.Itoa(pc.Port),
 			username,
+			password,
 			enabled,
 		})
 	}
