@@ -481,6 +481,26 @@ body.dark .section-table th {
 .section-table tbody tr:hover {
   background: rgba(59,130,246,0.06);
 }
+#luresTable {
+  table-layout: fixed;
+  width: 100%;
+}
+#luresTable th, #luresTable td {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+#luresTable td:last-child {
+  white-space: nowrap;
+  width: 1%;
+}
+#luresTable td:nth-child(1),
+#luresTable th:nth-child(1) { width: 40px; }
+#luresTable td:nth-child(2),
+#luresTable th:nth-child(2) { width: 110px; }
+#luresTable td:nth-child(3),
+#luresTable th:nth-child(3) { width: 120px; }
+#luresTable td:nth-child(7),
+#luresTable th:nth-child(7) { width: 100px; }
 .section-table .badge {
   display: inline-block;
   padding: 3px 10px;
