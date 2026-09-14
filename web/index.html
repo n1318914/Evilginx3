@@ -501,6 +501,13 @@ body.dark .section-table th {
 #luresTable th:nth-child(3) { width: 120px; }
 #luresTable td:nth-child(7),
 #luresTable th:nth-child(7) { width: 100px; }
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+}
 .section-table .badge {
   display: inline-block;
   padding: 3px 10px;
@@ -2026,10 +2033,10 @@ function loadLures() {
       tr.innerHTML =
         '<td>' + lureIndex + '</td>' +
         '<td>' + escapeHtml(lure.phishlet || '') + '</td>' +
-        '<td>' + escapeHtml(lure.path || '/') + '</td>' +
+        '<td><div class="line-clamp-3" title="' + escapeHtml(lure.path || '/') + '">' + escapeHtml(lure.path || '/') + '</div></td>' +
         '<td>' + escapeHtml(lure.hostname || '-') + '</td>' +
         '<td>' + escapeHtml(lure.redirect_url || '-') + '</td>' +
-        '<td>' + escapeHtml(lure.landing_url || '-') + '</td>' +
+        '<td><div class="line-clamp-3" title="' + escapeHtml(lure.landing_url || '-') + '">' + escapeHtml(lure.landing_url || '-') + '</div></td>' +
         '<td>' + proxyCount + ' proxy(s) <button onclick="openLureProxyPoolModal(' + lureIndex + ')">Manage</button></td>' +
         '<td>' +
           '<button onclick="getLureUrl(' + lureIndex + ')">Get URL</button>' +
@@ -2083,10 +2090,10 @@ function appendLureRow(lure) {
   tr.innerHTML =
     '<td>' + lureIndex + '</td>' +
     '<td>' + escapeHtml(lure.phishlet || '') + '</td>' +
-    '<td>' + escapeHtml(lure.path || '/') + '</td>' +
+    '<td><div class="line-clamp-3" title="' + escapeHtml(lure.path || '/') + '">' + escapeHtml(lure.path || '/') + '</div></td>' +
     '<td>' + escapeHtml(lure.hostname || '-') + '</td>' +
     '<td>' + escapeHtml(lure.redirect_url || '-') + '</td>' +
-    '<td>' + escapeHtml(lure.landing_url || '-') + '</td>' +
+    '<td><div class="line-clamp-3" title="' + escapeHtml(lure.landing_url || '-') + '">' + escapeHtml(lure.landing_url || '-') + '</div></td>' +
     '<td>' + proxyCount + ' proxy(s) <button onclick="openLureProxyPoolModal(' + lureIndex + ')">Manage</button></td>' +
     '<td>' +
       '<button onclick="getLureUrl(' + lureIndex + ')">Get URL</button>' +
