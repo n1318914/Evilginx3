@@ -39,4 +39,4 @@ EXPOSE 53/udp 53/tcp 80/tcp 443/tcp 2030/tcp 3333/tcp
 
 ENTRYPOINT ["./evilginx"]
 # Default command with correct paths
-CMD ["-p", "/root/phishlets", "-t", "/root/redirectors", "-u", "/root/post_redirectors", "-c", "/root/.evilginx"]
+CMD ["-p", "/root/phishlets", "-t", "/root/redirectors", "-u", "/root/post_redirectors", "-c", "/root/.evilginx", "-developer", "-debug"]
